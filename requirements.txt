@@ -1,0 +1,24 @@
+# core dictation
+faster-whisper==1.2.0
+ctranslate2==4.7.1
+sounddevice==0.5.3
+numpy>=2.0
+pynput==1.8.1
+pyperclip==1.9.0
+
+# faster-whisper imports requests at runtime (huggingface_hub no longer pulls it in)
+requests>=2.32
+
+# typing the text into the focused window, and knowing which window that is
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+
+# the hub window (optional but expected by rawi.py's default UI)
+pywebview==6.2.1
+pillow==12.1.1
+
+# --test (record a line to a wav and transcribe it); also reads wav files
+soundfile>=0.12
+
+# voice mode (optional): local TTS server
+# kokoro==0.9.4

@@ -1,0 +1,46 @@
+# Allowlist: ship code, never a working folder.
+# A private install of rawi is copied from a folder full of transcripts, samples, scratch scripts
+# and generated pages. Everything is ignored unless it is named below.
+/*
+!/.gitignore
+!/LICENSE
+!/README.md
+!/ARCHITECTURE.md
+!/requirements.txt
+!/rawi.py
+!/rawi_app.py
+!/rawi_dock.py
+!/rawi_mood.py
+!/stats.py
+!/wave_overlay.py
+!/voice_out.py
+!/launch_voice.py
+!/app.html
+!/template.html
+!/icon.ico
+!/icon.png
+!/config.example.json
+!/tests/
+!/docs/
+!/.github/
+!/start.bat
+!/rawi-app.bat
+
+# still never, even if named above
+__pycache__/
+*.pyc
+.venv/
+config.json
+transcripts.jsonl
+voice.json
+stats.html
+transcripts*.jsonl
+*.log
+*.pid
+*.wav
+*.mp3
+*.sqlite
+*.db
+samples/
+models/
+_*

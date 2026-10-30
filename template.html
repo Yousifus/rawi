@@ -1,0 +1,56 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="refresh" content="20">
+<title>Rawi &middot; analytics</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin:0; background:__BG__; color:__TEXT__; font:14px/1.5 "Segoe UI", system-ui, sans-serif; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 34px 22px 60px; }
+h1 { font-size: 15px; letter-spacing:.22em; text-transform:uppercase; color:__GOLD__; font-weight:600; margin:0 0 3px; }
+.sub { color:__MUTE__; font-size:12px; margin-bottom:26px; }
+.grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-bottom:14px; }
+.card { background:__PANEL__; border:1px solid __LINE__; border-radius:12px; padding:16px 16px 14px; }
+.k { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:__MUTE__; }
+.v { font-size:26px; font-weight:600; color:__TEXT__; margin-top:6px; }
+.v small { font-size:12px; color:__MUTE__; font-weight:400; }
+h2 { font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:__MUTE__; margin:26px 0 10px; font-weight:600; }
+.chart { width:100%; display:block; }
+.row { display:grid; grid-template-columns: 104px 42px 1fr; gap:12px; padding:9px 0; border-top:1px solid __LINE__; align-items:start; }
+.when { color:__MUTE__; font-size:12px; }
+.lang { color:__EMBER__; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+.txt { white-space:pre-wrap; }
+.pill { display:inline-block; border:1px solid __LINE__; border-radius:999px; padding:3px 11px; margin:0 6px 6px 0; color:__GOLD__; font-size:12px; }
+.empty { color:__MUTE__; padding:14px 0; }
+.foot { color:__MUTE__; font-size:11px; margin-top:34px; }
+</style></head><body><div class="wrap">
+<h1>Rawi</h1>
+<div class="sub">__WHEN__ &middot; local transcription, nothing leaves this machine</div>
+
+<div class="grid">
+  <div class="card"><div class="k">Today</div><div class="v">__TW__ <small>words</small></div></div>
+  <div class="card"><div class="k">Speaking time today</div><div class="v">__TS__</div></div>
+  <div class="card"><div class="k">Dictations today</div><div class="v">__TN__</div></div>
+  <div class="card"><div class="k">Streak</div><div class="v">__STREAK__ <small>days</small></div></div>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="k">All time words</div><div class="v">__AW__</div></div>
+  <div class="card"><div class="k">Speaking rate</div><div class="v">__SPM__ <small>wpm</small></div></div>
+  <div class="card"><div class="k">Time vs typing</div><div class="v">__SAVED__ <small>min saved</small></div></div>
+  <div class="card"><div class="k">Median transcribe</div><div class="v">__LAT__ <small>s &middot; __RTF__x realtime</small></div></div>
+</div>
+
+<h2>Words per day &middot; last 30</h2>
+__CHART__
+
+<h2>When you dictate</h2>
+__HCHART__
+
+<h2>Languages</h2>
+__LANGS__
+
+<h2>Recent</h2>
+__RECENT__
+
+<div class="foot">__TOTALN__ dictations &middot; __TOTALSEC__ spoken &middot; log: transcripts.jsonl</div>
+</div></body></html>

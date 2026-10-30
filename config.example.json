@@ -1,0 +1,28 @@
+{
+  "hold_key": "ctrl_l",
+  "mode": "hold",
+  "model": "large-v3-turbo",
+  "compute_type": "float16",
+  "device": "auto",
+  "language": "auto",
+  "paste": true,
+  "restore_clipboard": true,
+  "beeps": true,
+  "log": false,
+  "max_seconds": 180,
+  "dumb": false,
+  "mood": "auto",
+  "talk": false,
+  "paste_key": "f9",
+  "lang_key": "f10",
+  "talk_key": "f7",
+  "lang_lock": "auto",
+  "listen": {
+    "key": "f8",
+    "silence_ms": 700,
+    "min_s": 0.45,
+    "max_s": 25,
+    "paste": false
+  },
+  "min_seconds": 0.25
+}
