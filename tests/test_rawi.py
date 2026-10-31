@@ -145,3 +145,38 @@ class TestDeviceChoice(unittest.TestCase):
 class TestQueue(unittest.TestCase):
     def test_queue_holds_more_than_one(self):
         self.assertGreaterEqual(rawi.QUEUE_MAX, 2)
+
+
+class _FakeModel:
+    """Stands in for Whisper: a fixed language probe, and records the language it was told."""
+
+    def __init__(self, allp):
+        self.allp, self.told = allp, []
+
+    def detect_language(self, audio, language_detection_segments=1):
+        return self.allp[0][0], self.allp[0][1], self.allp
+
+    def transcribe(self, audio, language=None, **kw):
+        self.told.append(language)
+        from types import SimpleNamespace
+        return [SimpleNamespace(text="hello")], SimpleNamespace(language=language, duration=1.0)
+
+
+class TestTwoLanguageProbe(unittest.TestCase):
+    """An accented "hello" right after Arabic: the probe gives English 0.51 and spreads the rest
+    over languages he never speaks. Weighed as Arabic vs English only, that is English."""
+
+    def _rawi(self, allp, hint):
+        d = rawi.Rawi(dict(rawi.DEFAULTS))
+        d.model, d.lang_hint = _FakeModel(allp), hint
+        return d
+
+    def test_english_wins_over_an_arabic_hint(self):
+        d = self._rawi([("en", 0.51), ("nn", 0.20), ("ar", 0.15), ("fa", 0.14)], "ar")
+        d.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
+        self.assertEqual(d.model.told, ["en"])
+
+    def test_a_real_coin_toss_keeps_the_hint(self):
+        d = self._rawi([("ar", 0.35), ("en", 0.32), ("ur", 0.33)], "ar")
+        d.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
+        self.assertEqual(d.model.told[0], "ar")

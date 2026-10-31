@@ -609,7 +609,18 @@ class Rawi:
         lang, prob = language, 1.0
         if lang is None:
             got, prob = self.pick_lang(audio)
-            need = 0.85 if self.lang_hint else 0.60   # a man mid-conversation keeps his language
+            # He speaks two languages, so weigh only those two: a probe that spreads itself over
+            # look-alikes (ar/fa/ur, en/nl) still says which of HIS languages it heard. A raw
+            # "en 0.51" with the rest on strangers is a clear English line, not a coin toss.
+            pair = [str(x) for x in (self.cfg.get("languages") or ("ar", "en"))]
+            two = {x: float(self.lang_probs.get(x) or 0.0) for x in pair}
+            if sum(two.values()) > 0.05:
+                got = max(two, key=two.get)
+                prob = two[got] / sum(two.values())
+            # a man mid-conversation keeps his language; switching needs 0.75 of the two-way
+            # weight (it was 0.85 of the raw one, which a real accented "hello" never reached,
+            # so English was forced through Arabic and came back translated: «مرحباً»)
+            need = 0.75 if self.lang_hint and got != self.lang_hint else 0.60
             if prob >= need and got:
                 lang = got
             elif self.lang_hint:
@@ -654,7 +665,8 @@ class Rawi:
         if wrote in ("ar", "en") and (prob >= 0.60 or lang is not None):
             self.lang_hint = wrote
         self.last_lang = (lang, round(prob, 2))
-        print(f"[rawi] wrote as {wrote} (probe {prob:.2f})", flush=True)
+        heard = " ".join(f"{x} {float(self.lang_probs.get(x) or 0):.2f}" for x in ("ar", "en"))
+        print(f"[rawi] wrote as {wrote} (probe {prob:.2f}; raw {heard}; hint {self.lang_hint})", flush=True)
         return text, (wrote or "?"), float(getattr(info, "duration", 0.0) or 0.0)
 
     # ---------- the ear ----------
