@@ -1300,8 +1300,14 @@ def doctor(cfg: dict, deep: bool = False) -> int:
         n = ctranslate2.get_cuda_device_count()
     except Exception:
         n = 0
+    import rawi_mlx
+    engine = str(cfg.get("engine") or "auto").lower()
     if n:
         ok(f"{n} CUDA device(s) visible to ctranslate2")
+    elif IS_MAC and engine in ("auto", "mlx") and rawi_mlx.available():
+        ok("Apple GPU via MLX (mlx-whisper) \u2014 no CUDA needed")
+    elif IS_MAC:
+        warn("no CUDA on a Mac \u2014 CPU is slow; on Apple silicon `pip install mlx-whisper` runs it on the GPU")
     else:
         warn("no CUDA device visible \u2014 will run on CPU (set compute_type to int8 and a small model)")
 
@@ -1405,34 +1411,49 @@ def main() -> int:
             Wave().demo(args.seconds)
         return 0
 
-    device, ctype = "cuda", cfg["compute_type"]
-    want = str(cfg.get("device") or "auto").lower()
-    if want == "cpu":
-        device, ctype = "cpu", "int8"
-        print("[rawi] device: cpu (from config)", flush=True)
-    elif want == "auto" and not cuda_available():
-        device, ctype = "cpu", "int8"
-        print("[rawi] no CUDA device here -> CPU int8", flush=True)
-    else:
-        holder = gpu_gate()
-        if holder and gate_requires_yield(holder):
-            device, ctype = "cpu", "int8"
-            print(f"[rawi] GPU busy with {holder.get('owner')} ({holder.get('purpose')}) -> CPU int8", flush=True)
-    print(f"[rawi] loading {cfg['model']} ({ctype} on {device}) ...", flush=True)
-    t0 = time.time()
-    from faster_whisper import WhisperModel
-    try:
-        model = WhisperModel(cfg["model"], device=device, compute_type=ctype)
-    except Exception as e:
-        print(f"[rawi] load failed ({type(e).__name__}: {e})", flush=True)
-        if device == "cuda":
+    # Apple silicon: Whisper on the GPU through MLX when it is installed (rawi_mlx.py), about
+    # 6x faster than CTranslate2 on the CPU. "engine": "ctranslate2" keeps the old path.
+    model, t0 = None, time.time()
+    engine = str(cfg.get("engine") or "auto").lower()
+    if engine == "mlx" or (engine == "auto" and IS_MAC):
+        import rawi_mlx
+        if rawi_mlx.available():
+            print(f"[rawi] loading {cfg['model']} (MLX on the Apple GPU) ...", flush=True)
             try:
-                model = WhisperModel(cfg["model"], device="cuda", compute_type="int8_float16")
-            except Exception as e2:
-                print(f"[rawi] cuda int8_float16 failed ({type(e2).__name__}: {e2}) -> CPU int8", flush=True)
-                model = WhisperModel(cfg["model"], device="cpu", compute_type="int8")
+                model = rawi_mlx.MlxWhisper(cfg["model"])
+            except Exception as e:
+                print(f"[rawi] MLX load failed ({type(e).__name__}: {e}) -> CTranslate2", flush=True)
+        elif engine == "mlx":
+            print("[rawi] engine mlx asked for, but mlx-whisper is not installed -> CTranslate2", flush=True)
+    if model is None:
+        device, ctype = "cuda", cfg["compute_type"]
+        want = str(cfg.get("device") or "auto").lower()
+        if want == "cpu":
+            device, ctype = "cpu", "int8"
+            print("[rawi] device: cpu (from config)", flush=True)
+        elif want == "auto" and not cuda_available():
+            device, ctype = "cpu", "int8"
+            print("[rawi] no CUDA device here -> CPU int8", flush=True)
         else:
-            raise
+            holder = gpu_gate()
+            if holder and gate_requires_yield(holder):
+                device, ctype = "cpu", "int8"
+                print(f"[rawi] GPU busy with {holder.get('owner')} ({holder.get('purpose')}) -> CPU int8", flush=True)
+        print(f"[rawi] loading {cfg['model']} ({ctype} on {device}) ...", flush=True)
+        t0 = time.time()
+        from faster_whisper import WhisperModel
+        try:
+            model = WhisperModel(cfg["model"], device=device, compute_type=ctype)
+        except Exception as e:
+            print(f"[rawi] load failed ({type(e).__name__}: {e})", flush=True)
+            if device == "cuda":
+                try:
+                    model = WhisperModel(cfg["model"], device="cuda", compute_type="int8_float16")
+                except Exception as e2:
+                    print(f"[rawi] cuda int8_float16 failed ({type(e2).__name__}: {e2}) -> CPU int8", flush=True)
+                    model = WhisperModel(cfg["model"], device="cpu", compute_type="int8")
+            else:
+                raise
     print(f"[rawi] model ready in {time.time()-t0:.1f}s", flush=True)
 
     d = Rawi(cfg)
