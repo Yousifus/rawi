@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""voice_out.py — a resident local TTS server. Kokoro loaded once, spoken on demand.
+"""voice_out.py — a resident local TTS server. Kokoro (or Piper) loaded once, spoken on demand.
+
+Engine from voice.json: "engine": "kokoro" (default, English only) or "piper" (Arabic + English:
+`pip install piper-tts`; "voice_ar" / "voice_en" pick voices, defaults Kareem and LibriTTS-R).
 
 Why this exists: loading a TTS model per call costs tens of seconds. A conversation cannot survive
 that. This keeps the pipeline warm and turns a line into sound in about a second.
@@ -65,8 +68,151 @@ def pick_device():
     return None
 
 
+# en_US-ryan-high is CC BY-NC-SA 4.0 (non-commercial), so it is not the default. LibriTTS-R's
+# dataset is CC BY 4.0 and keeps the American accent, but like ar_JO-kareem it was fine-tuned from
+# en_US-lessac-medium, whose dataset does not allow commercial voice synthesis (see the README's
+# Voice section). en_GB-cori-high is the English voice trained from scratch on public-domain data
+# (British). ar_JO-kareem-medium stays: Piper publishes no other Arabic voice.
+PIPER_VOICES = {"ar": "ar_JO-kareem-medium", "en": "en_US-libritts_r-medium"}
+# rhasspy/piper-voices at this commit. Pinned so a moving branch cannot swap the files.
+PIPER_REV = "b4e358ffcb232591bf73a540e70f7de528e4174a"
+
+
+def _voice_cfg() -> dict:
+    try:
+        with open(CFG, encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def piper_output_rate(voices) -> int:
+    """One playback rate for a joined line. Each voice keeps its own config.sample_rate.
+    Play at the higher rate so a 16 kHz voice is not the clock for a 22.05 kHz one."""
+    rates = []
+    for voice in voices.values():
+        if isinstance(voice, str):
+            continue
+        rate = getattr(getattr(voice, "config", None), "sample_rate", None)
+        if rate:
+            rates.append(int(rate))
+    return max(rates) if rates else 22050
+
+
+def _resample(audio, src_sr: int, dst_sr: int):
+    """Linear resample with numpy only, so a mixed-rate join does not need scipy."""
+    audio = np.asarray(audio, dtype=np.float32).reshape(-1)
+    src_sr, dst_sr = int(src_sr), int(dst_sr)
+    if audio.size == 0 or src_sr == dst_sr:
+        return audio
+    n_out = int(round(audio.size * float(dst_sr) / float(src_sr)))
+    if n_out <= 0:
+        return np.zeros(0, dtype=np.float32)
+    if audio.size == 1:
+        return np.full(n_out, float(audio[0]), dtype=np.float32)
+    x = np.linspace(0.0, audio.size - 1, n_out)
+    xp = np.arange(audio.size, dtype=np.float64)
+    return np.interp(x, xp, audio).astype(np.float32)
+
+
+def warm_piper(cfg: dict):
+    """Piper: small local voices with Arabic (Kokoro has none). One voice per script, so a
+    line that mixes Arabic and English is read by both, each in its own language."""
+    global _pipe, SR
+    from huggingface_hub import hf_hub_download
+    from piper import PiperVoice
+    t0 = time.time()
+    _pipe = {}
+    for lang, default in PIPER_VOICES.items():
+        name = cfg.get(f"voice_{lang}") or default                 # e.g. en_US-libritts_r-medium
+        if name.startswith("apple:"):                              # e.g. apple:Majed
+            best = apple_voice(name[6:])
+            if best:
+                _pipe[lang] = best
+                continue
+            print(f"[voice] no Premium/Enhanced Apple voice {name[6:]!r} installed "
+                  f"(System Settings > Accessibility > Spoken Content) -> {default}", flush=True)
+            name = default
+        loc, _, quality = name.split("-")
+        path = f"{loc.split('_')[0]}/{loc}/{name.split('-')[1]}/{quality}/{name}"
+        onnx = hf_hub_download("rhasspy/piper-voices", path + ".onnx", revision=PIPER_REV)
+        hf_hub_download("rhasspy/piper-voices", path + ".onnx.json", revision=PIPER_REV)
+        _pipe[lang] = PiperVoice.load(onnx)
+    SR = piper_output_rate(_pipe)
+    _rate["device"], _rate["load_s"] = "cpu (piper)", round(time.time() - t0, 1)
+    _rate["voice"] = "/".join(v if isinstance(v, str) else "piper" for v in _pipe.values())
+    _ready.set()
+    print(f"[voice] ready in {time.time()-t0:.1f}s: " + ", ".join(
+        f"{k}={v if isinstance(v, str) else 'piper:' + (cfg.get(f'voice_{k}') or PIPER_VOICES[k])}"
+        for k, v in _pipe.items()), flush=True)
+
+
+def apple_voice(base: str):
+    """The best installed macOS voice called `base`: Premium, then Enhanced. Never the compact
+    one: that is the robotic voice this option exists to replace."""
+    import subprocess
+    have = subprocess.run(["say", "-v", "?"], capture_output=True, text=True).stdout
+    for tier in ("Premium", "Enhanced"):
+        if f"{base} ({tier})" in have:
+            return f"{base} ({tier})"
+    return None
+
+
+def synth_apple(voice: str, text: str):
+    """macOS `say` straight to a float WAV at the engine's rate, then read back for playback."""
+    import subprocess
+    import tempfile
+    import soundfile as sf
+    with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+        subprocess.run(["say", "-v", voice, "-o", f.name, "--file-format=WAVE",
+                        f"--data-format=LEF32@{SR}", text], check=True)
+        audio, _ = sf.read(f.name, dtype="float32")
+    return audio if audio.ndim == 1 else audio.mean(axis=1)
+
+
+def _runs(text: str):
+    """Split a line into same-script runs: [("ar", "يا هلا"), ("en", "Sam"), ...].
+    Digits and punctuation stay with the run they sit in."""
+    runs = []
+    for word in text.split():
+        # letters decide, not punctuation: "Sam،" (Arabic comma) is still English
+        lang = ("ar" if re.search(r"[ء-غف-يٱ-ۓ]", word) else
+                "en" if re.search(r"[A-Za-z]", word) else (runs[-1][0] if runs else "en"))
+        if runs and runs[-1][0] == lang:
+            runs[-1][1].append(word)
+        else:
+            runs.append((lang, [word]))
+    return [(lang, " ".join(words)) for lang, words in runs]
+
+
+def synth_piper(text: str):
+    """Join same-script runs onto one output rate. Each Piper voice keeps its native rate."""
+    global SR
+    SR = piper_output_rate(_pipe)
+    gap = np.zeros(int(SR * 0.12), dtype=np.float32)     # a breath between language switches
+    chunks = []
+    for lang, run in _runs(text):
+        voice = _pipe[lang]
+        if isinstance(voice, str):                                  # an Apple voice by name
+            pieces = [synth_apple(voice, run)]                      # already rendered at SR
+            src = SR
+        else:
+            src = int(getattr(getattr(voice, "config", None), "sample_rate", SR) or SR)
+            pieces = [c.audio_int16_array.astype(np.float32) / 32768.0 for c in voice.synthesize(run)]
+        if pieces:
+            chunks += [_resample(piece, src, SR) for piece in pieces] + [gap]
+    return np.concatenate(chunks) if chunks else None
+
+
 def warm():
     global _pipe
+    cfg = _voice_cfg()
+    if str(cfg.get("engine") or "kokoro").lower() == "piper":
+        try:
+            warm_piper(cfg)
+        except Exception as e:
+            print(f"[voice] piper FAILED {type(e).__name__}: {e}", flush=True)
+        return
     t0 = time.time()
     try:
         from kokoro import KPipeline
@@ -121,6 +267,8 @@ def _split(text: str, n: int = CHUNK_CHARS):
 
 
 def synth(text: str):
+    if isinstance(_pipe, dict):                       # piper: one voice per language
+        return synth_piper(text)
     chunks = []
     for piece in _split(text):
         chunks += [r.audio.numpy() for r in _pipe(piece, voice=VOICE)]
@@ -133,7 +281,7 @@ def play(audio, device=None):
     import sounddevice as sd
     try:
         sd.stop()
-        sd.play(audio, SR, device=device)
+        sd.play(audio, SR, device=device)   # Kokoro is native 24 kHz; Piper chunks are resampled to SR
     except Exception as e:
         print(f"[voice] play failed {type(e).__name__}: {e}", flush=True)
 
@@ -177,7 +325,7 @@ class H(BaseHTTPRequestHandler):
                 free_gb = round(psutil.virtual_memory().available / 1073741824, 1)
             except Exception:
                 free_gb = None
-            return self._json(200, {"ok": True, "ready": _ready.is_set(), "voice": VOICE,
+            return self._json(200, {"ok": True, "ready": _ready.is_set(), "voice": _rate.get("voice") or VOICE,
                                     "device": _rate["device"], "load_s": _rate["load_s"],
                                     "idle_s": round(time.time() - _last_use[0], 1) if _last_use[0] else None,
                                     "free_gb": free_gb})
