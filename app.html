@@ -507,6 +507,17 @@ details.adv[open] summary{margin-bottom:10px}
   </div>
 
   <div class="sect">
+  <h2>Long recordings</h2>
+  <div class="sub2">A recording that never stops is the usual cause of a transcript full of repeated lines. Each of these is a limit in seconds; 0 means no limit at all.</div>
+  <label>Holding the key</label>
+  <input id="c-maxhold" type="number" min="0" step="10" inputmode="numeric">
+  <div class="hint">Left at 0 on purpose: a long hold ends when you let go, so rawi never cuts one. Raise it only if a stuck key once recorded for hours.</div>
+  <label>Tap twice to keep recording</label>
+  <input id="c-maxtoggle" type="number" min="0" step="10" inputmode="numeric">
+  <div class="hint">This one records without your hand on the key, so it has a limit. When it is reached rawi stops and says so, and the next press is treated as the stop you meant.</div>
+  </div>
+
+  <div class="sect">
   <h2>Cleanup <span class="opt">optional</span></h2>
   <div class="explain">
     Cleanup sends each line to a small language model running on your own computer, which takes out filler words like "umm" and "يعني" and adds punctuation. It needs an OpenAI-compatible model server running on this computer, set in config.json (the README has the details). Without it, rawi pastes exactly what it heard, which is what most people want.
@@ -1224,6 +1235,9 @@ async function fillCfg(){
     // the level shown is what the daemon will do: a stored level means nothing while cleanup is disabled
     paintLevel(CFG.clean ? (CFG.level||'light') : 'none'); paintTone(CFG.tone||'default');
     snips_loaded=false; renderProfiles(); renderSnips();
+    const caps = (CFG && typeof CFG.max_seconds === 'object' && CFG.max_seconds) ? CFG.max_seconds : {hold:0,toggle:180,latch:180};
+    if($('c-maxhold')) $('c-maxhold').value = Number(caps.hold||0);
+    if($('c-maxtoggle')) $('c-maxtoggle').value = Number(caps.toggle===undefined?180:caps.toggle);
     $('c-lang').value = CFG.language||'auto';
     $('c-model').value = CFG.model||'large-v3-turbo';
     paintChoice('c-log', CFG.log?'on':'off');
@@ -1239,6 +1253,9 @@ async function applyCfg(){
     profiles:collectProfiles(), snippets:collectSnips(),
     language:$('c-lang').value,
     model:$('c-model').value};
+  const capn = (id, dflt)=>{ const v = parseFloat(($(id)||{}).value); return isFinite(v)&&v>=0 ? v : dflt; };
+  if($('c-maxhold')) patch.max_seconds = {hold:capn('c-maxhold',0), toggle:capn('c-maxtoggle',180),
+                                          latch:capn('c-maxtoggle',180)};
   if(lvl!=='none') patch.level = lvl;     // turning cleanup off keeps the level for next time
   await saveNow(patch, 'cfgmsg');
   await fillCfg();

@@ -561,6 +561,7 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
                 "log": bool(c.get("log", False)),
                 "talk": bool(c.get("talk", False)),
                 "mood": c.get("mood", "auto"),
+                "max_seconds": c.get("max_seconds", {"hold": 0, "toggle": 180, "latch": 180}),
                 "clean": bool(cl.get("enabled", False)),
                 "level": cl.get("level", "light"),
                 "tone": cl.get("tone", "default"),
@@ -594,6 +595,15 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             c["talk"] = bool(patch.get("talk"))
         if patch.get("mood") in ("auto", "off"):
             c["mood"] = patch["mood"]
+        if isinstance(patch.get("max_seconds"), dict):   # the hub's three number boxes, 0 = off
+            caps = {}
+            for k in ("hold", "toggle", "latch"):
+                try:
+                    caps[k] = max(0.0, float(patch["max_seconds"].get(k) or 0))
+                except (TypeError, ValueError):
+                    caps[k] = max(0.0, float((c.get("max_seconds") or {}).get(k) or 0)
+                                 if isinstance(c.get("max_seconds"), dict) else 0.0)
+            c["max_seconds"] = caps
         if isinstance(patch.get("snippets"), dict):
             c["snippets"] = {str(k): str(v) for k, v in patch["snippets"].items() if str(k).strip()}
         if "names" in patch or "pairs" in patch:

@@ -116,7 +116,12 @@ DEFAULTS = {
     "restore_clipboard": True,
     "beeps": True,
     "log": False,
-    "max_seconds": 180,
+    # 0 = no cap. A plain number caps only the modes that run away on their own (toggle, latch) and
+    # never a hold, because a hold ends when he lets go; an object gives each mode its own cap.
+    "max_seconds": {"hold": 0, "toggle": 180, "latch": 180},
+    # Whisper loops a phrase tens of times, people repeat on purpose five times. Eight is the line,
+    # and the words in repeat_collapse.keep (dhikr, laughter) are never collapsed at any count.
+    "repeat_collapse": {"min_repeats": 8},
     "dumb": False,
     "mood": "auto",      # auto = tag each dictation with one earned emoji; off = never
     "talk": False,       # voice mode: speak the transcript aloud instead of pasting it
@@ -489,21 +494,99 @@ HALLUCINATIONS = ("اشتركوا في القناة", "اشترك في القن�
                   "ترجمة نانسي قنقر", "شكرا للمشاهدة", "thanks for watching", "thank you for watching",
                   "please subscribe", "subtitles by the amara.org community")
 _PUNCT = "،,.!?؟؛;:\"'«»…-"
+_CAP_TAP_GRACE = 5.0     # a tap this soon after the cap stopped a recording is the stop he meant
+
+# Repetition he means and must keep: dhikr, and laughter. A loop and a prayer look alike to a
+# repeated-phrase filter, so the difference is written down instead of guessed at a count.
+KEPT_REPEATS = ("سبحان الله", "الحمد لله", "الله أكبر", "لا إله إلا الله", "أستغفر الله",
+                "لا حول ولا قوة إلا بالله", "صلى الله عليه وسلم", "إن شاء الله",
+                "ha", "hah", "haha", "hahaha", "heh", "hehe", "hihi", "هه", "ههه", "هههه", "هاها")
 
 
-def drop_hallucinations(text: str) -> str:
+def _num(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def max_seconds_for(cfg, mode: str = "toggle") -> float:
+    """How long one way of recording may run: 0 means no cap at all.
+
+    A plain number caps the modes that can run away on their own (toggle, latch) and leaves hold
+    alone: a hold ends when he lets go, and a long one is not a fault. An object in the config
+    gives each mode its own cap, so {"hold": 0, "toggle": 180} says exactly what it looks like."""
+    raw = (cfg or {}).get("max_seconds")
+    if isinstance(raw, dict):
+        want = str(mode or "toggle")
+        if want in raw:
+            return max(0.0, _num(raw.get(want), 0.0))
+        if want == "hold":
+            return 0.0                       # absent means uncapped, never a guess
+        return max(0.0, _num(raw.get("toggle"), 0.0))
+    seconds = _num(raw, 180.0)
+    return 0.0 if str(mode) == "hold" else max(0.0, seconds)
+
+
+def _repeat_settings(cfg):
+    """The collapse threshold and the words exempt from it, each overridable on its own."""
+    raw = (cfg or {}).get("repeat_collapse")
+    raw = raw if isinstance(raw, dict) else {}
+    given = raw.get("min_repeats")
+    minimum = int(_num(given, 8.0)) if given is not None else 8
+    keep = raw.get("keep")
+    if not isinstance(keep, (list, tuple)) or not keep:
+        keep = KEPT_REPEATS
+    return max(2, minimum), {_norm(str(k)) for k in keep if str(k).strip()}
+
+
+def _stock_only(text: str) -> bool:
+    """True when every word of the transcript belongs to one of Whisper's stock lines, in any
+    number of repeats. One real word is enough to keep the whole text, stock line included."""
+    words = [w for w in (_norm(x.strip(_PUNCT)) for x in text.split()) if w]
+    if not words:
+        return True
+    phrases = [tuple(_norm(h).split()) for h in HALLUCINATIONS]
+    i = 0
+    while i < len(words):
+        for phrase in phrases:
+            if phrase and tuple(words[i:i + len(phrase)]) == phrase:
+                i += len(phrase)
+                break
+        else:
+            return False
+    return True
+
+
+def drop_hallucinations(text: str, cfg=None) -> str:
     """Whisper's two failure modes on silence and noise, removed after the fact.
 
-    A loop: a word or short phrase repeated over and over («سعيدة، سعيدة، سعيدة …»). Five or more
-    back-to-back repeats collapse to one; people do say "no no no", Whisper loops say it forty times.
-    A stock line: «اشتركوا في القناة» and friends, dropped only when it is the whole transcript,
-    so a creator dictating a real call to subscribe keeps it."""
+    A loop: a word or short phrase repeated over and over («سعيدة، سعيدة، سعيدة …»). Repeated
+    `repeat_collapse.min_repeats` times (8 by default; people repeat on purpose five times, Whisper
+    repeats forty) it collapses to one. Dhikr and laughter are exempt at any count, because
+    «سبحان الله» five times is dictation and a laugh is a word.
+    A stock line: «اشتركوا في القناة» and friends, dropped only when the transcript is nothing but
+    stock lines, however many times they were repeated, so a real call to subscribe keeps its words.
+    Whatever it removes is printed, so a shortened dictation is explainable afterwards."""
     if not text:
         return text
+    min_repeats, keep = _repeat_settings(cfg)
     words = text.split()
     key = [_norm(w.strip(_PUNCT)) for w in words]
-    out, i = [], 0
+    out, i, collapsed = [], 0, 0
     while i < len(words):
+        # A kept phrase is copied through whole, however long the run: dhikr and laughter are
+        # dictation. Skipping two words at a time is what keeps «لا لا» from dying one «لا» at a time.
+        held = 0
+        for n in (4, 3, 2, 1):
+            piece = key[i:i + n]
+            if len(piece) == n and all(piece) and " ".join(piece) in keep:
+                held = n
+                break
+        if held:
+            out.extend(words[i:i + held])
+            i += held
+            continue
         for n in (1, 2, 3, 4):
             unit = key[i:i + n]
             if len(unit) < n or not all(unit):
@@ -511,15 +594,19 @@ def drop_hallucinations(text: str) -> str:
             reps = 1
             while key[i + reps * n:i + (reps + 1) * n] == unit:
                 reps += 1
-            if reps >= 5:
+            if reps >= min_repeats:
                 out.extend(words[i:i + n])
                 i += reps * n
+                collapsed += reps - 1
                 break
         else:
             out.append(words[i])
             i += 1
     text = " ".join(out)
-    if _norm(text.strip(_PUNCT + " ")) in {_norm(h) for h in HALLUCINATIONS}:
+    if collapsed:
+        print(f"[rawi] hallucination filter: collapsed {collapsed} repeated word(s)", flush=True)
+    if _stock_only(text):
+        print("[rawi] hallucination filter: dropped a stock line", flush=True)
         return ""
     return text
 
@@ -584,7 +671,10 @@ class Rawi:
         self.frames: list[np.ndarray] = []
         self.stream = None
         self.recording = False
-        self._capped = False
+        self._capped = False            # the cap already fired for this recording
+        self._cap_stopped = 0.0         # when it did, so the next key press is a stop, not a start
+        self._cap_s = 0.0               # this recording's cap in seconds; 0 = none
+        self._cap_mode = str(self.cfg.get("mode") or "hold")
         self.started_at = 0.0
         self.busy = threading.Semaphore(1)
         self.pending = collections.deque()      # recordings waiting for the model, in order
@@ -747,11 +837,19 @@ class Rawi:
         if self.recording:
             self.frames.append(indata.copy())
             # max_seconds was a setting nothing read: a latched recording ran 22 minutes and Whisper
-            # filled the silence with stock lines. Stop it here (off the audio thread).
-            if (not self._capped and
-                    time.time() - self.started_at > float(self.cfg.get("max_seconds") or 180)):
+            # filled the silence with stock lines. Stop it here (off the audio thread), at the cap
+            # this recording's own mode declares — and never at a cap a long hold never had.
+            if (not self._capped and self._cap_s and
+                    time.time() - self.started_at > self._cap_s):
                 self._capped = True
-                print(f"[rawi] max_seconds ({self.cfg.get('max_seconds')}) reached, stopping", flush=True)
+                self._cap_stopped = time.time()
+                print(f"[rawi] max_seconds ({self._cap_s:g}, {self._cap_mode}) reached, stopping",
+                      flush=True)
+                if self.wave is not None:
+                    try:
+                        self.wave.flash(f"stopped at {self._cap_s:g}s", ok=False, seconds=2.2)
+                    except Exception:
+                        pass
                 threading.Thread(target=self.stop_and_process, daemon=True).start()
             if self.wave is not None:
                 try:
@@ -760,17 +858,38 @@ class Rawi:
                 except Exception:
                     pass
 
-    def start_rec(self):
+    def start_rec(self, latched: bool = False):
         if self.recording:
             return
         self.frames = []
         self._capped = False
+        self._cap_mode = "latch" if latched else str(self.cfg.get("mode") or "hold")
+        self._cap_s = max_seconds_for(self.cfg, self._cap_mode)
         self.recording = True
         self.started_at = time.time()
         beep(880, 55, self.cfg["beeps"])
         if self.wave is not None:
             self.wave.show()
         print("[rawi] recording...", flush=True)
+
+    def toggle_rec(self):
+        """The toggle key. Start, stop, or absorb the tap he meant as a stop when the cap had
+        already stopped the recording: with no recording running, the next press used to start a
+        second one, so the tap after an auto-stop recorded his silence."""
+        if self.recording:
+            self.stop_and_process()
+            return "stopped"
+        if self._cap_stopped and time.time() - self._cap_stopped <= _CAP_TAP_GRACE:
+            self._cap_stopped = 0.0
+            print("[rawi] the cap already stopped that recording; this tap did nothing", flush=True)
+            if self.wave is not None:
+                try:
+                    self.wave.flash("stopped at the cap", ok=False, seconds=1.8)
+                except Exception:
+                    pass
+            return "capped"
+        self.start_rec()
+        return "started"
 
     def abort_rec(self):
         """Discard a recording that turned out to be a shortcut, without a beep."""
@@ -1510,6 +1629,9 @@ def main() -> int:
         target = MAC_LEFT.get(target, target)    # "ctrl" and "ctrl_l" are one key there
     mode = cfg["mode"]
     print(f"[rawi] key={target} mode={mode} lang={cfg['language']} paste={cfg['paste']}", flush=True)
+    caps = ", ".join(f"{m}={'off' if not max_seconds_for(cfg, m) else f'{max_seconds_for(cfg, m):g}s'}"
+                     for m in ("hold", "toggle", "latch"))
+    print(f"[rawi] max_seconds: {caps} (0 = off; a hold is never cut)", flush=True)
 
     if Wave is not None:
         try:
@@ -1620,11 +1742,8 @@ def main() -> int:
             d.stop_and_process()
             return
 
-        if mode == "toggle":
-            if d.recording:
-                d.stop_and_process()
-            else:
-                d.start_rec()
+        if mode in ("toggle", "latch"):
+            d.toggle_rec()
             return
 
         # hold mode: wait to see whether this is Ctrl alone or the start of a shortcut
@@ -1655,7 +1774,7 @@ def main() -> int:
             if now - state["tap_at"] < DOUBLE:
                 state["tap_at"] = 0.0
                 state["latched"] = True
-                d.start_rec()
+                d.start_rec(latched=True)
                 beep(880, 45, cfg["beeps"]); _time.sleep(0.09); beep(1100, 45, cfg["beeps"])
             else:
                 state["tap_at"] = now

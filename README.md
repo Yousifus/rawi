@@ -128,7 +128,9 @@ Every key is optional; the table below covers the ones worth knowing.
 | `paste` | `true` | paste at the cursor instead of only copying |
 | `restore_clipboard` | `true` | put your old clipboard back after pasting |
 | `log` | `false` | keep a transcript history (`transcripts.jsonl`) |
-| `min_seconds` / `max_seconds` | `0.25` / `180` | ignore taps / cap a runaway recording |
+| `min_seconds` | `0.25` | ignore taps shorter than this |
+| `max_seconds` | `{hold: 0, toggle: 180, latch: 180}` | cap a recording that runs away on its own. `0` = no cap; a plain number caps `toggle` and `latch` only, never a `hold` |
+| `repeat_collapse` | `{min_repeats: 8}` | collapse a word or phrase repeated this many times (Whisper loops); dhikr and laughter are exempt at any count |
 | `listen` | `{key: "f8", silence_ms: 700, …}` | the always-on ear and its thresholds |
 
 ## Platforms

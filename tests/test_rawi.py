@@ -175,3 +175,167 @@ class TestHallucinations(unittest.TestCase):
 
     def test_empty_is_safe(self):
         self.assertEqual(rawi.drop_hallucinations(""), "")
+
+class TestMeantRepetition(unittest.TestCase):
+    """A prayer and a laugh are dictation, not a model loop. The old filter cut both at five."""
+
+    def test_a_dhikr_five_times_survives(self):
+        text = " ".join(["سبحان الله"] * 5)
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_a_dhikr_mixed_with_a_real_sentence_survives(self):
+        text = " ".join(["الحمد لله"] * 6) + " الحين نبدأ"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_a_laugh_survives(self):
+        text = "ha ha ha ha ha that was funny"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_arabic_laughter_survives(self):
+        text = "هههههههههه لا تقول"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_a_loop_of_a_real_phrase_still_collapses(self):
+        text = " ".join(["سعيدة"] * 12) + " اليوم"
+        self.assertEqual(rawi.drop_hallucinations(text), "سعيدة اليوم")
+
+
+class TestRepeatThreshold(unittest.TestCase):
+    """The count is a setting: the default sits above how often a person repeats on purpose."""
+
+    def test_default_threshold_is_eight(self):
+        self.assertEqual(rawi._repeat_settings(rawi.DEFAULTS)[0], 8)
+
+    def test_five_identical_words_are_left_alone(self):
+        text = " ".join(["go"] * 5)
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_the_setting_is_read(self):
+        cfg = {"repeat_collapse": {"min_repeats": 3}}
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["go"] * 5), cfg), "go")
+
+    def test_a_20_word_loop_survives_a_high_threshold(self):
+        cfg = {"repeat_collapse": {"min_repeats": 30}}
+        text = " ".join(["go"] * 20)
+        self.assertEqual(rawi.drop_hallucinations(text, cfg), text)
+
+    def test_the_keep_list_can_be_replaced(self):
+        cfg = {"repeat_collapse": {"keep": ["لا لا"]}}
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["لا لا"] * 9), cfg),
+                         " ".join(["لا لا"] * 9))
+        # a phrase no longer in the list falls back to the count
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["ha"] * 9), cfg), "ha")
+
+    def test_an_unreadable_threshold_falls_back_to_the_default(self):
+        cfg = {"repeat_collapse": {"min_repeats": "many"}}
+        self.assertEqual(rawi._repeat_settings(cfg)[0], 8)
+
+    def test_nonsense_config_does_not_crash(self):
+        self.assertEqual(rawi.drop_hallucinations("hello", {"repeat_collapse": "off"}), "hello")
+
+
+class TestStockLinesRepeated(unittest.TestCase):
+    """Two to four stock lines used to slip through the single-line check."""
+
+    def test_stock_line_twice_is_dropped(self):
+        self.assertEqual(rawi.drop_hallucinations("Thanks for watching! Thanks for watching!"), "")
+
+    def test_stock_line_four_times_in_two_languages_is_dropped(self):
+        text = "اشتركوا في القناة. Thanks for watching. اشتركوا في القناة. Thanks for watching."
+        self.assertEqual(rawi.drop_hallucinations(text), "")
+
+    def test_one_real_word_keeps_everything(self):
+        text = "Thanks for watching! Thanks for watching! ok"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_stock_only_is_true_for_a_pile_and_false_for_one_word(self):
+        self.assertTrue(rawi._stock_only("اشتركوا في القناة اشتركوا في القناة"))
+        self.assertFalse(rawi._stock_only("اشتركوا في القناة ابدأ"))
+
+
+class TestMaxSecondsSetting(unittest.TestCase):
+    """The cap is per way of recording, and a long hold is not a fault."""
+
+    def test_a_plain_number_never_caps_a_hold(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "hold"), 0.0)
+
+    def test_a_plain_number_caps_the_self_running_modes(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "toggle"), 180.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "latch"), 180.0)
+
+    def test_an_object_gives_each_mode_its_own_cap(self):
+        cfg = {"max_seconds": {"hold": 0, "toggle": 120, "latch": 30}}
+        self.assertEqual(rawi.max_seconds_for(cfg, "hold"), 0.0)
+        self.assertEqual(rawi.max_seconds_for(cfg, "toggle"), 120.0)
+        self.assertEqual(rawi.max_seconds_for(cfg, "latch"), 30.0)
+
+    def test_zero_means_off(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 0}, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 0}}, "toggle"), 0.0)
+
+    def test_a_missing_hold_key_is_uncapped_not_guessed(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 90}}, "hold"), 0.0)
+
+    def test_a_missing_toggle_key_falls_back_to_zero(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"hold": 5}}, "toggle"), 0.0)
+
+    def test_the_default_leaves_holds_alone(self):
+        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "hold"), 0.0)
+        self.assertGreater(rawi.max_seconds_for(rawi.DEFAULTS, "toggle"), 0)
+
+    def test_a_bad_value_is_not_a_two_and_a_half_minute_cap(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": "soon"}, "toggle"), 180.0)
+
+
+class TestCapLeavesTheNextTapAlone(unittest.TestCase):
+    """After the cap stops a recording, the tap he meant as "stop" must not start a new one."""
+
+    def _rawi(self, cfg=None):
+        # __new__, not __init__: the constructor opens a microphone and imports sounddevice,
+        # and these tests must run in CI where neither exists.
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False, **(cfg or {}))
+        d.recording = False
+        d._capped = False
+        d._cap_stopped = 0.0
+        d._cap_s = 0.0
+        d._cap_mode = str(d.cfg.get("mode") or "hold")
+        d.wave = None
+        d.start_rec = lambda *a, **k: setattr(d, "started", True)
+        d.stop_and_process = lambda: setattr(d, "stopped", True)
+        return d
+
+    def test_a_tap_right_after_the_cap_does_nothing(self):
+        d = self._rawi()
+        d._cap_stopped = rawi.time.time()
+        self.assertEqual(d.toggle_rec(), "capped")
+        self.assertFalse(getattr(d, "started", False))
+        self.assertFalse(getattr(d, "stopped", False))
+
+    def test_the_tap_is_absorbed_only_once(self):
+        d = self._rawi()
+        d._cap_stopped = rawi.time.time()
+        d.toggle_rec()
+        self.assertEqual(d.toggle_rec(), "started")
+
+    def test_an_old_cap_stop_does_not_swallow_a_real_start(self):
+        d = self._rawi()
+        d._cap_stopped = rawi.time.time() - rawi._CAP_TAP_GRACE - 1
+        self.assertEqual(d.toggle_rec(), "started")
+
+    def test_a_running_recording_stops_on_the_tap(self):
+        d = self._rawi()
+        d.recording = True
+        self.assertEqual(d.toggle_rec(), "stopped")
+
+    def test_the_cap_follows_the_mode_of_the_recording(self):
+        d = self._rawi({"mode": "hold", "max_seconds": {"hold": 0, "latch": 45}})
+        del d.start_rec                     # the real one, to see what it records
+        d.recording = False
+        d.start_rec(latched=True)
+        self.assertEqual(d._cap_s, 45.0)
+        self.assertEqual(d._cap_mode, "latch")
+        d.stop_and_process = lambda: None
+        d.recording = False
+        d.start_rec()
+        self.assertEqual(d._cap_s, 0.0)
