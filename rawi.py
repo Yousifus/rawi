@@ -550,9 +550,12 @@ def _repeat_settings(cfg):
     given = raw.get("min_repeats")
     minimum = int(_num(given, 8.0)) if given is not None else 8
     keep = raw.get("keep")
-    if not isinstance(keep, (list, tuple)) or not keep:
-        keep = KEPT_REPEATS
-    return max(2, minimum), {_norm(str(k)) for k in keep if str(k).strip()}
+    # his list ADDS to the built-in one. It used to replace it, so following the README to keep a
+    # lone «الله» silently dropped the dhikr and the laughter, which is the harm this filter exists
+    # to prevent. A user list must never remove a protection he cannot see.
+    extra = keep if isinstance(keep, (list, tuple)) else ()
+    kept = list(KEPT_REPEATS) + [str(k) for k in extra if str(k).strip()]
+    return max(2, minimum), {_norm(k) for k in kept if k.strip()}
 
 
 def _stock_only(text: str) -> bool:

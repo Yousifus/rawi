@@ -219,12 +219,20 @@ class TestRepeatThreshold(unittest.TestCase):
         text = " ".join(["go"] * 20)
         self.assertEqual(rawi.drop_hallucinations(text, cfg), text)
 
-    def test_the_keep_list_can_be_replaced(self):
-        cfg = {"repeat_collapse": {"keep": ["لا لا"]}}
-        self.assertEqual(rawi.drop_hallucinations(" ".join(["لا لا"] * 9), cfg),
-                         " ".join(["لا لا"] * 9))
-        # a phrase no longer in the list falls back to the count
-        self.assertEqual(rawi.drop_hallucinations(" ".join(["ha"] * 9), cfg), "ha")
+    def test_a_user_keep_list_adds_to_the_built_in_one(self):
+        # it used to replace it: following the README to keep a lone «الله» silently dropped the
+        # dhikr and the laughter, which is the harm this filter exists to prevent
+        cfg = {"repeat_collapse": {"keep": ["الله"]}}
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["الله"] * 9), cfg),
+                         " ".join(["الله"] * 9))
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["سبحان الله"] * 9), cfg),
+                         " ".join(["سبحان الله"] * 9))
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["ha"] * 9), cfg), " ".join(["ha"] * 9))
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["يا رب"] * 9),
+                                                  {"repeat_collapse": {"keep": ["يا رب"]}}),
+                         " ".join(["يا رب"] * 9))
+        # a phrase that is in neither list still obeys the count
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["لا لا"] * 9), cfg), "لا")
 
     def test_an_unreadable_threshold_falls_back_to_the_default(self):
         cfg = {"repeat_collapse": {"min_repeats": "many"}}

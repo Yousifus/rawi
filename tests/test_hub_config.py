@@ -132,9 +132,17 @@ class MaxSecondsSave(unittest.TestCase):
         self.assertEqual(got["hold"], 0.0)
         self.assertEqual(got["latch"], 180.0)
 
-    def test_a_scalar_patch_keeps_the_stored_number_when_unreadable(self):
-        got = self.save({"max_seconds": "abc"}, current=600)
-        self.assertEqual(got, 600.0)
+    def test_a_non_object_patch_leaves_three_caps_alone(self):
+        # a bare number is the old format and rawi ignores it; writing one could only flatten
+        for bad in ("abc", None, [], True, 240):
+            got = self.save({"max_seconds": bad},
+                            current={"hold": 60, "toggle": 120, "latch": 300})
+            self.assertEqual(got, {"hold": 60.0, "toggle": 120.0, "latch": 300.0}, bad)
+
+    def test_a_negative_value_is_not_off(self):
+        got = self.save({"max_seconds": {"hold": -5, "toggle": -1, "latch": "x"}},
+                        current={"hold": 60, "toggle": 120, "latch": 300})
+        self.assertEqual(got, {"hold": 60.0, "toggle": 120.0, "latch": 300.0})
 
 
 if __name__ == "__main__":

@@ -616,7 +616,9 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
                     return fallback
                 if number != number or number in (float("inf"), float("-inf")):
                     return fallback
-                return max(0.0, number)
+                # a negative is not "off" and it is not a cap: it is a bad value, and the stored one
+                # stands. Clamping it to 0 would silently unlock a capped mode.
+                return fallback if number < 0 else number
 
             def _existing(key):
                 if key in cur_caps:
@@ -630,8 +632,8 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             if isinstance(given, dict):
                 c["max_seconds"] = {k: _cap(given[k], _existing(k)) if k in given else _existing(k)
                                     for k in ("hold", "toggle", "latch")}
-            else:
-                c["max_seconds"] = _cap(given, _existing("toggle"))
+            # anything else is left alone: a bare number is the old format and rawi ignores it, so
+            # writing one here would flatten three caps into a value that does nothing
         if isinstance(patch.get("snippets"), dict):
             c["snippets"] = {str(k): str(v) for k, v in patch["snippets"].items() if str(k).strip()}
         if "names" in patch or "pairs" in patch:
