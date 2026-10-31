@@ -679,6 +679,7 @@ class Rawi:
         self._cap_mode = str(self.cfg.get("mode") or "hold")
         self.started_at = 0.0
         self.busy = threading.Semaphore(1)
+        self._stop_lock = threading.Lock()      # the cap and a release can land in the same instant
         self.pending = collections.deque()      # recordings waiting for the model, in order
         self.wave = None
         # True while we are injecting our own Ctrl+V. pynput sees injected keys as real,
@@ -938,9 +939,12 @@ class Rawi:
             self.wave.hide()
 
     def stop_and_process(self):
-        if not self.recording:
-            return
-        self.recording = False
+        # The cap fires on the audio thread while a key release may arrive at the same moment;
+        # without this, both could pass the check and the same audio would be transcribed twice.
+        with self._stop_lock:
+            if not self.recording:
+                return
+            self.recording = False
         beep(520, 55, self.cfg["beeps"])
         if self.wave is not None:
             self.wave.hide()
