@@ -598,15 +598,40 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             c["talk"] = bool(patch.get("talk"))
         if patch.get("mood") in ("auto", "off"):
             c["mood"] = patch["mood"]
-        if isinstance(patch.get("max_seconds"), dict):   # the hub's three number boxes, 0 = off
-            caps = {}
-            for k in ("hold", "toggle", "latch"):
+        if "max_seconds" in patch:                      # the hub's number boxes, 0 = off
+            given = patch.get("max_seconds")
+            current = c.get("max_seconds")
+            cur_caps = current if isinstance(current, dict) else {}
+            plain = (current if isinstance(current, (int, float)) and not isinstance(current, bool)
+                     else None)
+
+            def _cap(value, fallback):
+                """A cap is a finite number from 0 up. Anything else keeps what was already there:
+                `true` is not one second, 1e999 is not a cap, and a bad value must not unlock."""
+                if isinstance(value, bool) or value is None:
+                    return fallback
                 try:
-                    caps[k] = max(0.0, float(patch["max_seconds"].get(k) or 0))
+                    number = float(value)
                 except (TypeError, ValueError):
-                    caps[k] = max(0.0, float((c.get("max_seconds") or {}).get(k) or 0)
-                                 if isinstance(c.get("max_seconds"), dict) else 0.0)
-            c["max_seconds"] = caps
+                    return fallback
+                if number != number or number in (float("inf"), float("-inf")):
+                    return fallback
+                return max(0.0, number)
+
+            def _existing(key):
+                if key in cur_caps:
+                    return _cap(cur_caps.get(key), 0.0 if key == "hold" else 180.0)
+                if plain is not None:
+                    # a plain number caps toggle and latch and leaves a hold alone, so that is
+                    # what lifting it into three boxes must preserve
+                    return 0.0 if key == "hold" else max(0.0, plain)
+                return 0.0 if key == "hold" else 180.0
+
+            if isinstance(given, dict):
+                c["max_seconds"] = {k: _cap(given[k], _existing(k)) if k in given else _existing(k)
+                                    for k in ("hold", "toggle", "latch")}
+            else:
+                c["max_seconds"] = _cap(given, _existing("toggle"))
         if isinstance(patch.get("snippets"), dict):
             c["snippets"] = {str(k): str(v) for k, v in patch["snippets"].items() if str(k).strip()}
         if "names" in patch or "pairs" in patch:

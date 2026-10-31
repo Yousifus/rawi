@@ -1235,9 +1235,13 @@ async function fillCfg(){
     // the level shown is what the daemon will do: a stored level means nothing while cleanup is disabled
     paintLevel(CFG.clean ? (CFG.level||'light') : 'none'); paintTone(CFG.tone||'default');
     snips_loaded=false; renderProfiles(); renderSnips();
-    const caps = (CFG && typeof CFG.max_seconds === 'object' && CFG.max_seconds) ? CFG.max_seconds : {hold:0,toggle:180,latch:180};
-    if($('c-maxhold')) $('c-maxhold').value = Number(caps.hold||0);
-    if($('c-maxtoggle')) $('c-maxtoggle').value = Number(caps.toggle===undefined?180:caps.toggle);
+    // a plain number in config.json is a cap for toggle and latch and leaves a hold alone, so it
+    // shows in the toggle box; showing the defaults instead would write 180 over a user's 600
+    const raw = CFG ? CFG.max_seconds : undefined;
+    const caps = (raw && typeof raw === 'object') ? raw
+               : (typeof raw === 'number' && isFinite(raw)) ? {toggle: raw} : null;
+    if($('c-maxhold')) $('c-maxhold').value = caps ? Number(caps.hold||0) : 0;
+    if($('c-maxtoggle')) $('c-maxtoggle').value = (caps && caps.toggle!==undefined) ? Number(caps.toggle) : 180;
     $('c-lang').value = CFG.language||'auto';
     $('c-model').value = CFG.model||'large-v3-turbo';
     paintChoice('c-log', CFG.log?'on':'off');
@@ -1254,8 +1258,16 @@ async function applyCfg(){
     language:$('c-lang').value,
     model:$('c-model').value};
   const capn = (id, dflt)=>{ const v = parseFloat(($(id)||{}).value); return isFinite(v)&&v>=0 ? v : dflt; };
-  if($('c-maxhold')) patch.max_seconds = {hold:capn('c-maxhold',0), toggle:capn('c-maxtoggle',180),
-                                          latch:capn('c-maxtoggle',180)};
+  if($('c-maxhold')){
+    const was = (CFG && CFG.max_seconds && typeof CFG.max_seconds === 'object') ? CFG.max_seconds : {};
+    // no box for latch: keep the stored one, or the plain number it came from, and never
+    // overwrite a hand-set latch cap with the toggle box on an unrelated save
+    const latch = $('c-maxlatch') ? capn('c-maxlatch',180)
+                : (typeof was.latch === 'number' && isFinite(was.latch)) ? was.latch
+                : (typeof CFG.max_seconds === 'number' && isFinite(CFG.max_seconds)) ? CFG.max_seconds
+                : capn('c-maxtoggle',180);
+    patch.max_seconds = {hold:capn('c-maxhold',0), toggle:capn('c-maxtoggle',180), latch};
+  }
   if(lvl!=='none') patch.level = lvl;     // turning cleanup off keeps the level for next time
   await saveNow(patch, 'cfgmsg');
   await fillCfg();

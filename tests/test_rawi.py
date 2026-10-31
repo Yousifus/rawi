@@ -340,6 +340,8 @@ class TestCapLeavesTheNextTapAlone(unittest.TestCase):
         d.recording = False
         d.start_rec()
         self.assertEqual(d._cap_s, 0.0)
+
+
 class _FakeStream:
     opened = 0
 
@@ -396,3 +398,83 @@ class TestIdleMic(unittest.TestCase):
         d._mic_used -= 60
         self.assertFalse(d.mic_close_if_idle())
 
+import types as _types
+from unittest import mock as _mock
+
+
+class _FakeWhisper:
+    """A model with the shape Rawi.transcribe uses, so the real call site can be exercised."""
+
+    def __init__(self, text):
+        self.text, self.told = text, []
+
+    def transcribe(self, audio, language=None, **kw):
+        self.told.append(language)
+        return ([_types.SimpleNamespace(text=self.text)],
+                _types.SimpleNamespace(language=language or "ar", duration=1.0))
+
+
+class TestTheFilterReadsItsSetting(unittest.TestCase):
+    """A setting only the tests can change is not a setting: these go through transcribe()."""
+
+    def _rawi(self, text, cfg=None):
+        # __new__, not __init__: the constructor imports sounddevice and a device may not exist.
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, **(cfg or {}))
+        d.model = _FakeWhisper(text)
+        d.lang_hint, d.lang_probs, d.last_lang = None, {}, (None, 0.0)
+        d.wave = None
+        return d
+
+    def _text(self, text, cfg=None):
+        return self._rawi(text, cfg).transcribe(rawi.np.zeros(1600, dtype=rawi.np.float32), "ar")[0]
+
+    def test_the_threshold_setting_reaches_the_live_call(self):
+        nine = " ".join(["same"] * 9)
+        self.assertEqual(self._text(nine).split().count("same"), 1)          # default 8 collapses it
+        self.assertEqual(self._text(nine, {"repeat_collapse": {"min_repeats": 20}}).split().count("same"), 9)
+        self.assertEqual(self._text(" ".join(["same"] * 4),
+                                   {"repeat_collapse": {"min_repeats": 3}}).split().count("same"), 1)
+
+    def test_a_kept_phrase_longer_than_four_words_survives_whole(self):
+        # A guard, not a fix: nothing five words or longer can be detected as a repeat unit (the
+        # window stops at four), so «لا حول ولا قوة إلا بالله» survives by arithmetic. This pins it
+        # so a later wider unit window cannot start eating the six-word dhikr.
+        line = "لا حول ولا قوة إلا بالله"
+        text = self._text(" ".join([line] * 3), {"repeat_collapse": {"min_repeats": 2}})
+        self.assertEqual(text.count("حول"), 3)
+
+    def test_a_single_word_dhikr_needs_the_keep_list(self):
+        # Documented behaviour: «الله» alone at nine repeats is the shape of a Whisper loop, so it
+        # collapses unless he adds it. The escape is one value in config.json.
+        self.assertEqual(self._text(" ".join(["الله"] * 9)).split().count("الله"), 1)
+        kept = {"repeat_collapse": {"keep": ["الله"]}}
+        self.assertEqual(self._text(" ".join(["الله"] * 9), kept).split().count("الله"), 9)
+
+    def test_dhikr_is_never_collapsed_however_long_the_run(self):
+        line = "سبحان الله"
+        self.assertEqual(self._text(" ".join([line] * 12)).count("سبحان"), 12)
+
+
+class _WatchOrder(rawi.Rawi):
+    """Records what the object looked like at the instant `recording` became True."""
+
+    def __setattr__(self, name, value):
+        if name == "recording" and value and "saw" not in self.__dict__:
+            self.__dict__["saw"] = (self.__dict__.get("started_at", 0), )
+        object.__setattr__(self, name, value)
+
+
+class TestTheCapCannotSeeAnOldStart(unittest.TestCase):
+    def test_started_at_is_set_before_the_flag(self):
+        # a callback between the two lines would read the previous recording's time and cap at once
+        d = _WatchOrder.__new__(_WatchOrder)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False)
+        d.recording, d._capped, d._cap_stopped = False, False, 0.0
+        d._cap_mode, d._cap_s, d.wave = "hold", 0.0, None
+        d.started_at = 0.0
+        d.mic_open = lambda: None
+        d.start_rec()
+        self.assertTrue(d.recording)
+        self.assertGreater(d.saw[0], 0.0)
+        self.assertAlmostEqual(d.started_at, d.saw[0])

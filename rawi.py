@@ -784,7 +784,7 @@ class Rawi:
                 else:
                     print(f"[rawi] second look: stayed english (markers={roman[:2]}, "
                           f"runner={ar_runner:.2f}, en_stop={en_stop})", flush=True)
-        text = apply_dictionary(drop_hallucinations(text), self.cfg)
+        text = apply_dictionary(drop_hallucinations(text, self.cfg), self.cfg)
         if wrote in ("ar", "en") and (prob >= 0.60 or lang is not None):
             self.lang_hint = wrote
         self.last_lang = (lang, round(prob, 2))
@@ -905,8 +905,8 @@ class Rawi:
         self._capped = False
         self._cap_mode = "latch" if latched else str(self.cfg.get("mode") or "hold")
         self._cap_s = max_seconds_for(self.cfg, self._cap_mode)
-        self.recording = True
-        self.started_at = time.time()
+        self.started_at = time.time()   # before the flag: the audio callback caps on this time,
+        self.recording = True           # and a callback between the two lines used to see an old one
         beep(880, 55, self.cfg["beeps"])
         if self.wave is not None:
             self.wave.show()
@@ -1806,8 +1806,12 @@ def main() -> int:
 
         if state["latched"]:          # a single tap ends a latched recording
             state["latched"] = False
-            d.stop_and_process()
-            return
+            if d.recording:
+                d.stop_and_process()
+                return
+            # The cap already ended it, so this press is a fresh hold, not a stop: a latched
+            # recording cut at 180 s must not eat the hold that follows.
+            print("[rawi] the cap ended the latched recording; this press starts fresh", flush=True)
 
         if mode in ("toggle", "latch"):
             d.toggle_rec()
