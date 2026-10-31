@@ -118,7 +118,7 @@ DEFAULTS = {
     "log": False,
     # 0 = no cap. A plain number caps only the modes that run away on their own (toggle, latch) and
     # never a hold, because a hold ends when he lets go; an object gives each mode its own cap.
-    "max_seconds": {"hold": 0, "toggle": 180, "latch": 180},
+    "max_seconds": {"hold": 300, "toggle": 0, "latch": 0},
     # Whisper loops a phrase tens of times, people repeat on purpose five times. Eight is the line,
     # and the words in repeat_collapse.keep (dhikr, laughter) are never collapsed at any count.
     "repeat_collapse": {"min_repeats": 8},
@@ -510,22 +510,37 @@ def _num(value, default=0.0):
         return default
 
 
-def max_seconds_for(cfg, mode: str = "toggle") -> float:
+# The cap, as Yousef chose it on 2026-11-01 after seeing how OpenWhispr does it: a hold gets a
+# ceiling, because a hold whose key-up is missed is a latch with a stuck key; toggle and latch are
+# off, because those are the modes he starts on purpose to dictate at length. {"hold": 0} turns the
+# net off; any mode can still be given its own number in the object.
+CAP_DEFAULTS = {"hold": 300.0, "toggle": 0.0, "latch": 0.0}
+
+
+def legacy_max_seconds(cfg):
+    """A bare number is what the first version of this setting looked like (and what an older hub
+    wrote). It cannot mean what it used to, so it is reported and ignored, never silently obeyed."""
+    raw = (cfg or {}).get("max_seconds")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return max(0.0, float(raw))
+
+
+def max_seconds_for(cfg, mode: str = "hold") -> float:
     """How long one way of recording may run: 0 means no cap at all.
 
-    A plain number caps the modes that can run away on their own (toggle, latch) and leaves hold
-    alone: a hold ends when he lets go, and a long one is not a fault. An object in the config
-    gives each mode its own cap, so {"hold": 0, "toggle": 180} says exactly what it looks like."""
+    The default is a ceiling on a hold and nothing on toggle or latch (CAP_DEFAULTS). An object in
+    the config overrides per mode, and a mode it does not name keeps its default, so {"latch": 600}
+    changes a latch and leaves the hold ceiling where it is. A bare number is an old-format value:
+    it is reported at startup and ignored, because the same 180 now means something else."""
+    want = str(mode or "hold")
+    default = CAP_DEFAULTS.get(want, 0.0)
     raw = (cfg or {}).get("max_seconds")
     if isinstance(raw, dict):
-        want = str(mode or "toggle")
         if want in raw:
-            return max(0.0, _num(raw.get(want), 0.0))
-        if want == "hold":
-            return 0.0                       # absent means uncapped, never a guess
-        return max(0.0, _num(raw.get("toggle"), 0.0))
-    seconds = _num(raw, 180.0)
-    return 0.0 if str(mode) == "hold" else max(0.0, seconds)
+            return max(0.0, _num(raw.get(want), default))
+        return default
+    return default
 
 
 def _repeat_settings(cfg):
@@ -889,7 +904,10 @@ class Rawi:
                         self.wave.flash(f"stopped at {self._cap_s:g}s", ok=False, seconds=2.2)
                     except Exception:
                         pass
-                threading.Thread(target=self.stop_and_process, daemon=True).start()
+                threading.Thread(
+                    target=self.stop_and_process,
+                    args=(f"cap {self._cap_s:g}s", self._cap_mode != "hold"),
+                    daemon=True).start()
             if self.wave is not None:
                 try:
                     rms = float(np.sqrt(np.mean(np.square(indata))))
@@ -917,7 +935,7 @@ class Rawi:
         already stopped the recording: with no recording running, the next press used to start a
         second one, so the tap after an auto-stop recorded his silence."""
         if self.recording:
-            self.stop_and_process()
+            self.stop_and_process("tap")
             return "stopped"
         if self._cap_stopped and time.time() - self._cap_stopped <= _CAP_TAP_GRACE:
             self._cap_stopped = 0.0
@@ -938,7 +956,11 @@ class Rawi:
         if self.wave is not None:
             self.wave.hide()
 
-    def stop_and_process(self):
+    def stop_and_process(self, reason: str = "release", paste: bool = True):
+        """Reason travels with the audio: history must be able to say why a line ended
+        (release, tap, cap 300s, stop). paste=False is for a cap that fires while his key is still
+        held: the text goes to the clipboard and the pill says so, because injecting Ctrl+V while
+        the physical Ctrl is down would drop his modifier state."""
         # The cap fires on the audio thread while a key release may arrive at the same moment;
         # without this, both could pass the check and the same audio would be transcribed twice.
         with self._stop_lock:
@@ -959,16 +981,18 @@ class Rawi:
             print("[rawi] too short, ignored", flush=True)   # the audio's length, not the wall clock
             return
         print(f"[rawi] captured {dur:.1f}s ({len(audio)/SR:.1f}s audio), transcribing...", flush=True)
-        threading.Thread(target=self._work, args=(audio, dur), daemon=True).start()
+        threading.Thread(target=self._work, args=(audio, dur, False, reason, paste),
+                         daemon=True).start()
 
     # ---------- work ----------
-    def _log_record(self, cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen):
+    def _log_record(self, cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen,
+                    reason="release"):
         try:
             log_transcript({"ts": datetime.datetime.now().isoformat(timespec="seconds"),
                             "seconds": round(dur, 2), "language": lg, "model": self.cfg["model"],
                             "transcribe_s": round(took, 2), "clean_s": round(ctook, 2),
                             "clean": cstatus, "text": cleaned, "raw": text, "app": app,
-                            "fid": fid,
+                            "fid": fid, "stop": reason,
                             "mood": (rawi_mood.tag(cleaned) if str(self.cfg.get("mood", "auto")) != "off" else None),
                             "to": ("voice" if self.cfg.get("talk") else ""),
                             "listen": bool(listen)},
@@ -1024,11 +1048,12 @@ class Rawi:
                             + buf[:34], ok=ok, seconds=2.6)
         print(f"[rawi] talk send via {how} ok={ok}: {buf[:90]}", flush=True)
 
-    def _work(self, audio: np.ndarray, dur: float, listen: bool = False):
+    def _work(self, audio: np.ndarray, dur: float, listen: bool = False,
+              reason: str = "release", paste: bool = True):
         if not self.busy.acquire(blocking=False):
             # Never lose words to a slow machine: hold the audio, do it next.
             if len(self.pending) < QUEUE_MAX:
-                self.pending.append((audio, dur, listen))
+                self.pending.append((audio, dur, listen, reason, paste))
                 print(f"[rawi] still transcribing the last one; queued ({len(self.pending)})", flush=True)
                 if self.wave is not None:
                     self.wave.flash("queued \u00b7 one at a time", ok=True, seconds=1.8)
@@ -1064,12 +1089,12 @@ class Rawi:
                 cleaned, cstatus = snip, "snippet"
             print(f"[rawi] {lg} in {took:.2f}s (+clean {ctook:.2f}s {cstatus}): {cleaned}", flush=True)
             fid = fidelity(text, cleaned)
-            self.last = {"raw": text, "clean": cleaned, "app": app,
-                         "ts": time.time(), "pasted": bool(self.cfg["paste"]) and not listen}
+            self.last = {"raw": text, "clean": cleaned, "app": app, "stop": reason,
+                         "ts": time.time(), "pasted": bool(self.cfg["paste"]) and paste and not listen}
             if listen and self.cfg.get("talk"):
                 # Voice mode: his pauses are breathing, not sentences ending.
                 self._talk_add(cleaned)
-                self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen)
+                self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen, reason)
                 return
             if listen:
                 # his words, ready — never pasted into a window he did not choose
@@ -1081,9 +1106,20 @@ class Rawi:
                 beep(660, 45, self.cfg["beeps"])
                 if self.wave is not None:
                     self.wave.flash("\u2713 copied \u00b7 " + cleaned[:44])
-            elif self.cfg["paste"]:
+            elif self.cfg["paste"] and paste:
                 self.paste(cleaned)
-            self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen)
+            elif self.cfg["paste"] and not paste:
+                # the cap fired with his key still down: copy, do not inject (OpenWhispr's choice,
+                # and the safe one until Ctrl+V-while-held is measured)
+                try:
+                    import pyperclip
+                    pyperclip.copy(cleaned)
+                except Exception:
+                    pass
+                beep(660, 45, self.cfg["beeps"])
+                if self.wave is not None:
+                    self.wave.flash("\u2713 copied \u00b7 key held, not pasted", ok=True, seconds=2.4)
+            self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen, reason)
         except Exception as e:
             print(f"[rawi] ERROR {type(e).__name__}: {e}", flush=True)
             beep(220, 120, self.cfg["beeps"])
@@ -1270,7 +1306,7 @@ def ipc_server(d, host="127.0.0.1", port=18090):
         try:
             if cmd == "toggle":
                 if d.recording:
-                    d.stop_and_process()
+                    d.stop_and_process("tap")
                 else:
                     d.start_rec()
             elif cmd == "start":
@@ -1310,7 +1346,7 @@ def ipc_server(d, host="127.0.0.1", port=18090):
                     want = not bool(d.ear and d.ear.on)
                 d.set_listen(bool(want))
             elif cmd == "stop":
-                d.stop_and_process()
+                d.stop_and_process("stop")
             elif cmd == "swap":
                 res = d.unpaste()
                 busy = not d.busy.acquire(blocking=False)
@@ -1698,7 +1734,15 @@ def main() -> int:
         secs = max_seconds_for(cfg, m)
         caps.append(m + "=" + ("off" if not secs else "%gs" % secs))
     caps = ", ".join(caps)
-    print(f"[rawi] max_seconds: {caps} (0 = off; a hold is never cut)", flush=True)
+    print(f"[rawi] max_seconds: {caps} (0 = off)", flush=True)
+    old_cap = legacy_max_seconds(cfg)
+    if old_cap is not None:
+        # a bare number used to mean "cap toggle and latch". The default changed on 2026-11-01, so
+        # obeying it now would cut his holds at three minutes. Say it out loud instead of guessing.
+        print("[rawi] max_seconds is a bare %g in your config.json: that form is from an older "
+              "version and is ignored. The cap is now hold %gs, toggle and latch off. Write "
+              '{"hold": 0} to turn the hold ceiling off.' % (old_cap, CAP_DEFAULTS["hold"]),
+              flush=True)
 
     if Wave is not None:
         try:
@@ -1807,7 +1851,7 @@ def main() -> int:
         if state["latched"]:          # a single tap ends a latched recording
             state["latched"] = False
             if d.recording:
-                d.stop_and_process()
+                d.stop_and_process("tap")
                 return
             # The cap already ended it, so this press is a fresh hold, not a stop: a latched
             # recording cut at 180 s must not eat the hold that follows.
@@ -1838,7 +1882,7 @@ def main() -> int:
         if state["combo"] and not d.recording:
             return                    # a shortcut: nothing happened, nothing to undo
         if d.recording and not was_pending:
-            d.stop_and_process()      # a latched tap ends here
+            d.stop_and_process("tap")     # a latched tap ends here
             return
         if held < TAP and not d.recording:
             now = _time.time()
@@ -1851,7 +1895,7 @@ def main() -> int:
                 state["tap_at"] = now
             return
         if d.recording:
-            d.stop_and_process()
+            d.stop_and_process("release")
 
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         print("[rawi] listening. Ctrl+C here to quit.", flush=True)

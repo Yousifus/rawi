@@ -9,7 +9,7 @@
   "restore_clipboard": true,
   "beeps": true,
   "log": false,
-  "max_seconds": { "hold": 0, "toggle": 180, "latch": 180 },
+  "max_seconds": { "hold": 300, "toggle": 0, "latch": 0 },
   "repeat_collapse": { "min_repeats": 8 },
   "dumb": false,
   "mood": "auto",

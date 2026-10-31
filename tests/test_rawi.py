@@ -256,12 +256,14 @@ class TestStockLinesRepeated(unittest.TestCase):
 class TestMaxSecondsSetting(unittest.TestCase):
     """The cap is per way of recording, and a long hold is not a fault."""
 
-    def test_a_plain_number_never_caps_a_hold(self):
-        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "hold"), 0.0)
-
-    def test_a_plain_number_caps_the_self_running_modes(self):
-        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "toggle"), 180.0)
-        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "latch"), 180.0)
+    def test_a_bare_number_is_reported_and_ignored(self):
+        # the old form meant "cap toggle and latch at 180". Obeying it now would cut his holds at
+        # three minutes, so it is named at startup and the new defaults apply instead.
+        self.assertEqual(rawi.legacy_max_seconds({"max_seconds": 180}), 180.0)
+        self.assertIsNone(rawi.legacy_max_seconds({"max_seconds": {"hold": 5}}))
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "hold"), 300.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "latch"), 0.0)
 
     def test_an_object_gives_each_mode_its_own_cap(self):
         cfg = {"max_seconds": {"hold": 0, "toggle": 120, "latch": 30}}
@@ -273,18 +275,27 @@ class TestMaxSecondsSetting(unittest.TestCase):
         self.assertEqual(rawi.max_seconds_for({"max_seconds": 0}, "toggle"), 0.0)
         self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 0}}, "toggle"), 0.0)
 
-    def test_a_missing_hold_key_is_uncapped_not_guessed(self):
-        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 90}}, "hold"), 0.0)
+    def test_a_missing_hold_key_keeps_the_default_ceiling(self):
+        # you turn the ceiling off by writing {"hold": 0}, not by leaving the key out
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 90}}, "hold"), 300.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 90}}, "toggle"), 90.0)
 
     def test_a_missing_toggle_key_falls_back_to_zero(self):
         self.assertEqual(rawi.max_seconds_for({"max_seconds": {"hold": 5}}, "toggle"), 0.0)
 
-    def test_the_default_leaves_holds_alone(self):
-        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "hold"), 0.0)
-        self.assertGreater(rawi.max_seconds_for(rawi.DEFAULTS, "toggle"), 0)
+    def test_the_default_caps_a_hold_and_frees_the_rest(self):
+        # his choice of 2026-11-01, after seeing OpenWhispr: a hold ceiling, no cap on the modes
+        # he starts on purpose
+        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "hold"), 300.0)
+        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "latch"), 0.0)
 
-    def test_a_bad_value_is_not_a_two_and_a_half_minute_cap(self):
-        self.assertEqual(rawi.max_seconds_for({"max_seconds": "soon"}, "toggle"), 180.0)
+    def test_the_shipped_defaults_are_the_documented_object(self):
+        self.assertEqual(rawi.DEFAULTS["max_seconds"], {"hold": 300, "toggle": 0, "latch": 0})
+
+    def test_a_bad_value_is_not_a_cap(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": "soon"}, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": "soon"}}, "toggle"), 0.0)
 
 
 class TestCapLeavesTheNextTapAlone(unittest.TestCase):
@@ -303,7 +314,7 @@ class TestCapLeavesTheNextTapAlone(unittest.TestCase):
         d.wave = None
         d.mic_open = lambda: None           # the real one opens a device
         d.start_rec = lambda *a, **k: setattr(d, "started", True)
-        d.stop_and_process = lambda: setattr(d, "stopped", True)
+        d.stop_and_process = lambda *a, **k: setattr(d, "stopped", True)
         return d
 
     def test_a_tap_right_after_the_cap_does_nothing(self):
@@ -478,3 +489,67 @@ class TestTheCapCannotSeeAnOldStart(unittest.TestCase):
         self.assertTrue(d.recording)
         self.assertGreater(d.saw[0], 0.0)
         self.assertAlmostEqual(d.started_at, d.saw[0])
+
+class _Pill:
+    def __init__(self):
+        self.flashed = []
+
+    def flash(self, text, ok=True, seconds=1.6):
+        self.flashed.append(text)
+
+    def show(self):
+        pass
+
+    def hide(self):
+        pass
+
+    def push(self, *_):
+        pass
+
+
+class TestWhyALineEnded(unittest.TestCase):
+    """A cap is a stop with a reason, and a stop while a key is down must not paste.
+
+    His choice of 2026-11-01, from OpenWhispr's behaviour: a capped recording is never lost, and it
+    says why. When the cap fires during a hold his Ctrl is still down, so the text is copied and the
+    pill says so instead of injecting Ctrl+V into a held modifier.
+    """
+
+    def _rawi(self, paste=True):
+        import collections
+        import threading
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False, paste=paste, log=True, dumb=True)
+        d.busy = threading.Semaphore(1)
+        d.pending = collections.deque()
+        d.injecting, d.last, d.ear = False, None, None
+        d.wave = _Pill()
+        d.transcribe = lambda audio, lang, listen=False: ("مرحبا", "ar", 1.0)
+        d.paste = lambda text: setattr(d, "pasted", text)
+        return d
+
+    def _run(self, d, reason="release", paste=True):
+        rows = []
+        fake = _types.SimpleNamespace(copy=rows.append)
+        with _mock.patch.dict(sys.modules, {"pyperclip": fake}), \
+                _mock.patch.object(rawi, "log_transcript", lambda row, _on: rows.append(row)), \
+                _mock.patch.object(rawi, "active_app", lambda: "app"), \
+                _mock.patch.object(rawi, "fidelity", lambda raw, clean: 1.0):
+            d._work(rawi.np.zeros(1600, dtype=rawi.np.float32), 1.0, False, reason, paste)
+        return rows
+
+    def test_the_reason_is_in_the_history_and_in_last(self):
+        d = self._rawi()
+        self._run(d, reason="cap 300s")
+        self.assertEqual(d.last["stop"], "cap 300s")
+        self.assertEqual(d.pasted, "مرحبا")          # a release-free cap on a tap still pastes
+
+    def test_a_cap_during_a_hold_copies_instead_of_pasting(self):
+        d = self._rawi()
+        rows = self._run(d, reason="cap 300s", paste=False)
+        self.assertFalse(hasattr(d, "pasted"))       # no Ctrl+V into a held Ctrl
+        self.assertFalse(d.last["pasted"])
+        self.assertEqual(rows[0], "مرحبا")            # it is on the clipboard
+        self.assertTrue(any("not pasted" in f for f in d.wave.flashed))
+        self.assertEqual(d.last["stop"], "cap 300s")
+        self.assertIs(rows[-1]["stop"], "cap 300s")

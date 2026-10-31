@@ -511,10 +511,10 @@ details.adv[open] summary{margin-bottom:10px}
   <div class="sub2">A recording that never stops is the usual cause of a transcript full of repeated lines. Each of these is a limit in seconds; 0 means no limit at all.</div>
   <label>Holding the key</label>
   <input id="c-maxhold" type="number" min="0" step="10" inputmode="numeric">
-  <div class="hint">Left at 0 on purpose: a long hold ends when you let go, so rawi never cuts one. Raise it only if a stuck key once recorded for hours.</div>
+  <div class="hint">300 by default, the same ceiling OpenWhispr uses. A normal hold ends when you let go and is never cut; the ceiling exists for a key-up that never arrives, which behaves exactly like a latched recording. 0 turns it off.</div>
   <label>Tap twice to keep recording</label>
   <input id="c-maxtoggle" type="number" min="0" step="10" inputmode="numeric">
-  <div class="hint">This one records without your hand on the key, so it has a limit. When it is reached rawi stops and says so, and the next press is treated as the stop you meant.</div>
+  <div class="hint">Off by default: this mode is the one you start on purpose to dictate at length. Set a limit and rawi stops at it, transcribes what it has, says why it stopped, and treats your next press as the stop you meant.</div>
   </div>
 
   <div class="sect">
@@ -1240,8 +1240,8 @@ async function fillCfg(){
     const raw = CFG ? CFG.max_seconds : undefined;
     const caps = (raw && typeof raw === 'object') ? raw
                : (typeof raw === 'number' && isFinite(raw)) ? {toggle: raw} : null;
-    if($('c-maxhold')) $('c-maxhold').value = caps ? Number(caps.hold||0) : 0;
-    if($('c-maxtoggle')) $('c-maxtoggle').value = (caps && caps.toggle!==undefined) ? Number(caps.toggle) : 180;
+    if($('c-maxhold')) $('c-maxhold').value = (caps && caps.hold!==undefined) ? Number(caps.hold) : 300;
+    if($('c-maxtoggle')) $('c-maxtoggle').value = (caps && caps.toggle!==undefined) ? Number(caps.toggle) : 0;
     $('c-lang').value = CFG.language||'auto';
     $('c-model').value = CFG.model||'large-v3-turbo';
     paintChoice('c-log', CFG.log?'on':'off');
@@ -1262,11 +1262,10 @@ async function applyCfg(){
     const was = (CFG && CFG.max_seconds && typeof CFG.max_seconds === 'object') ? CFG.max_seconds : {};
     // no box for latch: keep the stored one, or the plain number it came from, and never
     // overwrite a hand-set latch cap with the toggle box on an unrelated save
-    const latch = $('c-maxlatch') ? capn('c-maxlatch',180)
+    const latch = $('c-maxlatch') ? capn('c-maxlatch',0)
                 : (typeof was.latch === 'number' && isFinite(was.latch)) ? was.latch
-                : (typeof CFG.max_seconds === 'number' && isFinite(CFG.max_seconds)) ? CFG.max_seconds
-                : capn('c-maxtoggle',180);
-    patch.max_seconds = {hold:capn('c-maxhold',0), toggle:capn('c-maxtoggle',180), latch};
+                : 0;                       // no latch box: its default is off, and the toggle box is not it
+    patch.max_seconds = {hold:capn('c-maxhold',300), toggle:capn('c-maxtoggle',0), latch};
   }
   if(lvl!=='none') patch.level = lvl;     // turning cleanup off keeps the level for next time
   await saveNow(patch, 'cfgmsg');

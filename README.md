@@ -129,7 +129,7 @@ Every key is optional; the table below covers the ones worth knowing.
 | `restore_clipboard` | `true` | put your old clipboard back after pasting |
 | `log` | `false` | keep a transcript history (`transcripts.jsonl`) |
 | `min_seconds` | `0.25` | ignore taps shorter than this |
-| `max_seconds` | `{hold: 0, toggle: 180, latch: 180}` | cap a recording that runs away on its own. `0` = no cap; a plain number caps `toggle` and `latch` only, never a `hold` |
+| `max_seconds` | `{hold: 300, toggle: 0, latch: 0}` | the longest one recording may run, per mode. The default is a ceiling on a hold, because a hold whose key-up is missed behaves exactly like a latched recording, and no cap on toggle or latch, because those are started on purpose for long dictation. `0` = no cap, and any mode can take its own number. When a cap is reached rawi transcribes what it has, says why it stopped (`cap 300s` in the log), and a hold is never pasted while your key is still down: the text goes to the clipboard and the pill says so. A bare number is the old form and is ignored with one line at startup |
 | `repeat_collapse` | `{min_repeats: 8}` | collapse a word or phrase repeated this many times (Whisper loops); dhikr and laughter are exempt at any count. A single word chanted alone (e.g. «الله» nine times) looks exactly like a loop, so it collapses unless you add it: `{keep: ["الله"]}` overrides the list |
 | `listen` | `{key: "f8", silence_ms: 700, …}` | the always-on ear and its thresholds |
 
