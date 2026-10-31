@@ -172,6 +172,7 @@ td .x:hover{color:var(--accent)}
 .fchip{border:1px solid rgba(240,220,180,.18);background:rgba(255,245,225,.05);color:#c9b894;border-radius:999px;
   padding:4px 11px;font:12px/1.4 ui-sans-serif,system-ui;cursor:pointer}
 .fchip.on{background:#e8b34a;border-color:#e8b34a;color:#1a1206}
+.viewbar{position:absolute;left:14px;top:12px;display:flex;gap:6px;z-index:2}
 .skycount{position:absolute;right:16px;bottom:15px;color:#7a6a4f;font-size:11.5px;letter-spacing:.04em}
 
 .skygear{position:absolute;right:12px;top:11px;width:26px;height:26px;border-radius:50%;cursor:pointer;
@@ -207,6 +208,20 @@ td .x:hover{color:var(--accent)}
 .fx .n{margin-left:auto;color:var(--faint);font-size:11.5px}
 .langbar{display:flex;height:10px;border-radius:6px;overflow:hidden;margin:10px 0 8px;background:var(--line)}
 .langbar i{display:block;height:100%}
+.wk,.lw{display:flex;align-items:flex-end;gap:6px;margin-top:12px}
+.wk>div,.lw>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;color:var(--faint)}
+.wk i{display:block;width:100%;max-width:28px;background:var(--accent);opacity:.75;border-radius:3px 3px 0 0}
+.lw .stack{width:100%;max-width:44px;display:flex;flex-direction:column;border-radius:4px;overflow:hidden;min-height:2px}
+.lw .stack i{display:block;width:100%}
+.lw span{white-space:nowrap}
+.lkey{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--dim);margin-top:10px}
+.lkey i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-left:8px}
+.lkey i:first-child{margin-left:0}
+.lrow,.arow{display:grid;grid-template-columns:70px 1fr 40px;gap:10px;align-items:center;padding:5px 0;font-size:12.5px}
+.arow{grid-template-columns:130px 1fr 36px}
+.lrow b{font-weight:600;text-align:right}
+.abar.split{display:flex;opacity:1}
+.abar.split i{display:block;height:100%;border-radius:0;opacity:.9}
 
 /* ---- home, notes, settings sections ---- */
 :root{--edge:var(--line); --warn:#a8641c}
@@ -260,7 +275,7 @@ details.adv[open] summary{margin-bottom:10px}
     <button id="t-dict" onclick="tab('dict')"><span class="i">✎</span>Dictionary</button>
     <button id="t-set" onclick="tab('set')"><span class="i">⚙</span>Settings</button>
     <div class="navlabel">Your stats</div>
-    <button id="t-sky" onclick="tab('sky')"><span class="i">✦</span>Sky</button>
+    <button id="t-sky" onclick="tab('sky')"><span class="i">✦</span>Galaxy</button>
     <button id="t-usage" onclick="tab('usage')"><span class="i">▤</span>Usage</button>
     <button id="t-voice" onclick="tab('voice')"><span class="i">♪</span>Patterns</button>
   </nav>
@@ -301,14 +316,20 @@ details.adv[open] summary{margin-bottom:10px}
 </section>
 
 <section id="v-sky" class="hidden">
-  <h1>Sky</h1>
-  <div class="sub">Every line you have said is a star: the newest near the centre, older ones further out, bigger for longer lines. Hover a star to read it, scroll to zoom, drag to move. The gear changes what the colours mean.</div>
+  <h1>Galaxy</h1>
+  <div class="sub">Every line you have said, drawn four ways. <span id="sky-desc"></span> Hover to read a line, scroll to zoom, drag to move. The gear changes what the colours mean.</div>
   <div class="note histoff" hidden></div>
   <div class="room">
     <div class="rdate" id="r-date"></div>
     <div class="sky">
       <canvas id="sky"></canvas>
       <div class="sky-tip" id="sky-tip"></div>
+      <div class="viewbar">
+        <button class="fchip" data-v="galaxy" onclick="skyView('galaxy')">galaxy</button>
+        <button class="fchip" data-v="clock" onclick="skyView('clock')">clock</button>
+        <button class="fchip" data-v="river" onclick="skyView('river')">river</button>
+        <button class="fchip" data-v="words" onclick="skyView('words')">words</button>
+      </div>
       <div class="skybar">
         <button class="fchip on" data-f="all" onclick="skyFilter('all')">all</button>
         <button class="fchip" data-f="en" onclick="skyFilter('en')">english</button>
@@ -361,6 +382,14 @@ details.adv[open] summary{margin-bottom:10px}
     <div class="card vcard wide2"><div class="k">when you speak</div><div class="hours" id="v-hours"></div><div class="hoursx" id="v-hoursx"></div><div class="hint" id="v-hours-d"></div></div>
     <div class="card vcard wide2"><div class="k">your two languages</div><div id="v-langs"></div></div>
     <div class="card vcard wide2"><div class="k">fastest / slowest, with the line</div><div id="v-pace"></div></div>
+    <div class="card vcard"><div class="k">your rhythm</div><div id="v-rhythm"></div></div>
+    <div class="card vcard"><div class="k">days of the week</div><div class="wk" id="v-wk"></div><div class="hint" id="v-wk-d"></div></div>
+    <div class="card vcard wide2"><div class="k">how your languages mix, week by week</div><div class="lw" id="v-lw"></div>
+      <div class="lkey"><i style="background:#7fd6bd"></i>Arabic <i style="background:#f0c46a"></i>English <i style="background:#c4a8f0"></i>both in one line</div></div>
+    <div class="card vcard"><div class="k">words per line</div><div id="v-len"></div></div>
+    <div class="card vcard"><div class="k">your vocabulary</div><div id="v-vocab"></div></div>
+    <div class="card vcard wide2"><div class="k">which language, where</div><div id="v-apps"></div></div>
+    <div class="card vcard wide2"><div class="k">moods in your lines</div><div class="vw" id="v-moods"></div><div class="hint">Counted from the words each line used, when mood emoji are on.</div></div>
   </div>
 </section>
 <section id="v-usage" class="hidden">
@@ -543,7 +572,7 @@ function tab(name){
   if(name==='hist') loadHistory();
   if(name==='voice') loadVoice();
   if(name==='dict') renderDict();
-  if(name==='sky') drawSky();
+  if(name==='sky'){ paintViews(); drawSky(); }
   if(name==='set'){ fillCfg(); earPaint(); loadSamples(); }
 }
 
@@ -688,15 +717,28 @@ async function refresh(){
 
 /* ---------- the sky: every dictation a star ---------- */
 const SKY={stars:[],days:30,win:0,k:1,tx:0,ty:0,theta:0,hover:-1,raf:0,last:0,drag:null,
-  filter:'all',colorBy:'lang',sizeBy:'words',rings:true,threads:false,drift:true};
+  filter:'all',colorBy:'lang',sizeBy:'words',rings:true,threads:false,drift:true,view:'galaxy'};
+const SKY_VIEWS={
+  galaxy:'Galaxy: the newest lines near the centre, older ones further out, bigger for longer lines.',
+  clock:'Clock: a 24-hour dial. Midnight is at the top, so you can see what time of day you talk; newer lines sit nearer the middle.',
+  river:'River: time runs left to right, with Arabic, mixed and English lines in their own lanes.',
+  words:'Words: the words you use most in the lines shown, bigger for more often. Click one to read the lines it came from.'};
 function skyPrefs(){
   try{ const s=JSON.parse(localStorage.getItem('rawi-sky')||'{}');
-    for(const k of ['filter','colorBy','sizeBy','rings','threads','drift','win']) if(k in s) SKY[k]=s[k];
+    for(const k of ['filter','colorBy','sizeBy','rings','threads','drift','win','view']) if(k in s) SKY[k]=s[k];
   }catch(e){}
+  if(!SKY_VIEWS[SKY.view]) SKY.view='galaxy';
   SKY.k = 1; SKY.tx = 0; SKY.ty = 0;
 }
 function skySave(){ try{ localStorage.setItem('rawi-sky', JSON.stringify(
-  {filter:SKY.filter,colorBy:SKY.colorBy,sizeBy:SKY.sizeBy,rings:SKY.rings,threads:SKY.threads,drift:SKY.drift,win:SKY.win})); }catch(e){} }
+  {filter:SKY.filter,colorBy:SKY.colorBy,sizeBy:SKY.sizeBy,rings:SKY.rings,threads:SKY.threads,drift:SKY.drift,win:SKY.win,view:SKY.view})); }catch(e){} }
+function skyView(v){
+  SKY.view=v; SKY.k=1; SKY.tx=0; SKY.ty=0; SKY.hover=-1; skySave(); paintViews(); drawSky();
+}
+function paintViews(){
+  document.querySelectorAll('.viewbar .fchip').forEach(b=>b.classList.toggle('on', b.dataset.v===SKY.view));
+  const d=$('sky-desc'); if(d) d.textContent=SKY_VIEWS[SKY.view];
+}
 async function loadSky(){
   try{
     const g = await pywebview.api.galaxy(SKY.win||0);
@@ -757,6 +799,26 @@ function skyRadius(s){
   if(SKY.sizeBy==='even') return 2.3;
   return 1.7 + Math.min(s.w,70)*0.045;
 }
+// words that say nothing about you, kept out of the Words view (English and Arabic)
+const SKY_STOP=new Set(("the and for you that this with have are was but not just what your from they will can its it's get got all about "+
+  "there their would could should been one out like then them when his her she him our were has had into also very really yes okay well "+
+  "too more some any how why who which where here now than these those i'm don't can't let's gonna wanna yeah "+
+  "في من على عن الى إلى مع ان أن إن هذا هذه ذلك تلك هو هي هم انا أنا كنت كان كانت ما لا لم لن قد كل بعض غير بين عند حتى لو ثم او أو يا اي أي "+
+  "شي شيء يعني بس لكن انه أنه انها أنها كذا زي اللي وش ايش").split(/\s+/));
+function lineScript(t){ const a=/[؀-ۿ]/.test(t), e=/[A-Za-z]/.test(t); return a&&e?'mixed':(a?'ar':(e?'en':'other')); }
+const LANE={ar:-1, mixed:0, other:0, en:1};
+// the clock dial shrinks to fit the frame, labels included
+function clockFit(W,H){ return Math.max(0.4, Math.min(1, (Math.min(W,H)/2-48)/240)); }
+// where a star sits before pan and zoom, for each view; W and H are the canvas size
+function skyWorld(s,W,H){
+  if(SKY.view==='clock'){ const ang=s.a*Math.PI*2-Math.PI/2, f=clockFit(W,H); return [Math.cos(ang)*s.wr*f, Math.sin(ang)*s.wr*f]; }
+  if(SKY.view==='river'){
+    const maxH=SKY.maxH||24;
+    const jit=((skyHash((s.t||'')+s.d)%1000)/1000-0.5)*H*0.15;
+    return [W*0.42-(s.h/maxH)*W*0.84, LANE[lineScript(s.t||'')]*H*0.27+jit];
+  }
+  return [s.wx, s.wy];
+}
 function drawSky(){
   const cv=document.getElementById('sky'); if(!cv) return;
   const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight;
@@ -764,24 +826,55 @@ function drawSky(){
     cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
   }
   const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
-  const cx=W/2+SKY.tx, cy=H/2+SKY.ty, k=SKY.k, th=SKY.theta;
+  if(SKY.view==='words'){ drawWords(g,W,H); return; }
+  const cx=W/2+SKY.tx, cy=H/2+SKY.ty, k=SKY.k, th=(SKY.view==='galaxy'?SKY.theta:0);
   const cos=Math.cos(th), sin=Math.sin(th);
   const P=(x,y)=>{ const rx=x*cos-y*sin, ry=x*sin+y*cos; return [cx+rx*k, cy+ry*k]; };
-  // rings
-  if(SKY.rings){
-    const maxH=SKY.maxH||24, denom=Math.log1p(maxH);
-    const rings=[1,7,30,90,365].filter(d=>d*24<=maxH*1.02);
-    g.save(); g.strokeStyle='rgba(220,190,140,.10)'; g.setLineDash([2,6]);
-    for(const d of rings){
-      const r=(14+200*Math.log1p(d*24)/denom)*k;
-      g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.stroke();
-      g.fillStyle='rgba(200,180,140,.34)'; g.font='10px ui-sans-serif,system-ui';
-      g.fillText(d===1?'1 day':(d+' days'), cx+r*0.707+6, cy-r*0.707-4);
+  const maxH=SKY.maxH||24, denom=Math.log1p(maxH);
+  const marks=[1,7,30,90,365].filter(d=>d*24<=maxH*1.02);
+  g.save(); g.font='10px ui-sans-serif,system-ui';
+  if(SKY.view==='river'){
+    // lanes, and a line for each of 1, 7, 30... days ago
+    [['Arabic',-1],['both',0],['English',1]].forEach(([n,l])=>{
+      const y=cy+l*H*0.27*k;
+      g.fillStyle='rgba(240,220,180,.035)'; g.fillRect(0,y-H*0.1*k,W,H*0.2*k);
+      g.fillStyle='rgba(200,180,140,.5)'; g.fillText(n,12,y-H*0.1*k+12);
+    });
+    g.strokeStyle='rgba(220,190,140,.12)'; g.setLineDash([2,6]);
+    let lastX=Infinity;                                 // newest first, so close labels give way to "now"
+    [0].concat(marks).forEach(d=>{
+      const x=cx+(W*0.42-(d*24/maxH)*W*0.84)*k;
+      g.beginPath(); g.moveTo(x,0); g.lineTo(x,H); g.stroke();
+      if(lastX-x<80) return; lastX=x;
+      g.fillStyle='rgba(200,180,140,.45)'; g.fillText(d===0?'now':(d===1?'1 day ago':d+' days ago'),x+4,H-48);
+    });
+  } else {
+    if(SKY.rings || SKY.view==='clock'){
+      g.strokeStyle='rgba(220,190,140,.10)'; g.setLineDash([2,6]);
+      for(const d of marks){
+        const r=(14+200*Math.log1p(d*24)/denom)*k*(SKY.view==='clock'?clockFit(W,H):1);
+        g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.stroke();
+        g.fillStyle='rgba(200,180,140,.34)';
+        g.fillText(d===1?'1 day':(d+' days'), cx+r*0.707+6, cy-r*0.707-4);
+      }
     }
-    g.restore();
+    if(SKY.view==='clock'){
+      // the dial: a tick every hour, a label every three, midnight at the top
+      g.setLineDash([]); const R=(14+200)*clockFit(W,H)*k+12;
+      for(let h=0;h<24;h++){
+        const a=h/24*Math.PI*2-Math.PI/2, long=h%3===0;
+        g.strokeStyle=long?'rgba(240,196,106,.45)':'rgba(220,190,140,.18)';
+        g.beginPath(); g.moveTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);
+        g.lineTo(cx+Math.cos(a)*(R+(long?10:5)),cy+Math.sin(a)*(R+(long?10:5))); g.stroke();
+        if(long){ g.fillStyle='rgba(240,220,180,.6)'; g.textAlign='center'; g.textBaseline='middle';
+          g.fillText(String(h).padStart(2,'0')+':00', cx+Math.cos(a)*(R+24), cy+Math.sin(a)*(R+24)); }
+      }
+      g.textAlign='start'; g.textBaseline='alphabetic';
+    }
   }
-  // threads: one faint line per day, joining that day's stars in order of the hour
-  if(SKY.threads){
+  g.restore();
+  // threads: one faint line per day, joining that day's stars in order of the hour (galaxy only)
+  if(SKY.threads && SKY.view==='galaxy'){
     const byDay={};
     SKY.stars.forEach(s=>{ if(skyShow(s)===false) return; const d=Math.floor(s.h/24); (byDay[d]=byDay[d]||[]).push(s); });
     g.save(); g.strokeStyle='rgba(240,196,106,.16)'; g.lineWidth=1;
@@ -797,17 +890,20 @@ function drawSky(){
     }
     g.restore();
   }
-  // core
-  const core=g.createRadialGradient(cx,cy,0,cx,cy,120*k);
-  core.addColorStop(0,'rgba(240,196,106,.22)'); core.addColorStop(1,'rgba(240,196,106,0)');
-  g.fillStyle=core; g.beginPath(); g.arc(cx,cy,120*k,0,Math.PI*2); g.fill();
+  if(SKY.view!=='river'){
+    const core=g.createRadialGradient(cx,cy,0,cx,cy,120*k);
+    core.addColorStop(0,'rgba(240,196,106,.22)'); core.addColorStop(1,'rgba(240,196,106,0)');
+    g.fillStyle=core; g.beginPath(); g.arc(cx,cy,120*k,0,Math.PI*2); g.fill();
+  }
   // stars
   const now=performance.now();
   let shown=0;
   SKY.stars.forEach((s,i)=>{
+    s.px=undefined;
     if(skyShow(s)===false) return;
     shown++;
-    const [x,y]=P(s.wx,s.wy);
+    const [wx,wy]=skyWorld(s,W,H);
+    const [x,y]=P(wx,wy); s.px=x; s.py=y;
     if(x<-40||y<-40||x>W+40||y>H+40) return;
     const base=skyRadius(s)*Math.max(0.55,Math.min(1.6,k*0.85));
     let al = s.f==='red'?0.45:(s.f==='amber'?0.72:(s.f==='none'?0.52:0.94));
@@ -824,6 +920,49 @@ function drawSky(){
   const c=document.getElementById('sky-count');
   if(c) c.textContent = shown+' stars'+(SKY.k>1.02?'  ·  '+SKY.k.toFixed(1)+'×':'');
 }
+// the Words view: laid out once per filter and window, then only drawn
+const WORDS={key:'',boxes:[],lines:0};
+function layoutWords(g){
+  const counts={}; let lines=0;
+  SKY.stars.forEach(s=>{
+    if(skyShow(s)===false) return; lines++;
+    const seen=new Set();
+    // Arabic letters and harakat, but not the punctuation (، ؟ ؛) that shares the block
+    ((s.t||'').toLowerCase().match(/[\w\u0621-\u063A\u0641-\u065F\u0670-\u06D3']+/g)||[]).forEach(t=>{
+      if(t.length<3||SKY_STOP.has(t)||/^\d+$/.test(t)||seen.has(t)) return;
+      seen.add(t); counts[t]=(counts[t]||0)+1;
+    });
+  });
+  const top=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,48);
+  const max=top.length?top[0][1]:1, min=top.length?top[top.length-1][1]:1;
+  const placed=[];
+  top.forEach(([w,n])=>{
+    const size=12+32*Math.sqrt((n-min)/Math.max(1,max-min));
+    g.font='600 '+size+'px "Segoe UI",system-ui,sans-serif';
+    const tw=g.measureText(w).width+8, th=size*1.1;
+    let x=0, y=0;
+    for(let step=0; step<4000; step++){                 // walk out along a spiral until the word fits
+      const t=step*0.1, r=2.2*t; x=Math.cos(t)*r*1.7; y=Math.sin(t)*r*0.85;
+      if(!placed.some(p=>Math.abs(p.x-x)<(p.tw+tw)/2 && Math.abs(p.y-y)<(p.th+th)/2)) break;
+    }
+    placed.push({w,n,x,y,tw,th,size,col:/[؀-ۿ]/.test(w)?'#7fd6bd':'#f0c46a'});
+  });
+  WORDS.boxes=placed; WORDS.lines=lines;
+}
+function drawWords(g,W,H){
+  const key=[SKY.filter,SKY.win,SKY.stars.length].join('|');
+  if(WORDS.key!==key){ layoutWords(g); WORDS.key=key; }
+  const cx=W/2+SKY.tx, cy=H/2+SKY.ty, k=SKY.k;
+  g.textAlign='center'; g.textBaseline='middle';
+  WORDS.boxes.forEach((b,i)=>{
+    g.font='600 '+(b.size*k)+'px "Segoe UI",system-ui,sans-serif';
+    g.fillStyle=b.col; g.globalAlpha=(i===SKY.hover?1:0.86);
+    g.fillText(b.w, cx+b.x*k, cy+b.y*k);
+  });
+  g.globalAlpha=1; g.textAlign='start'; g.textBaseline='alphabetic';
+  const c=document.getElementById('sky-count');
+  if(c) c.textContent = WORDS.boxes.length ? WORDS.boxes.length+' words from '+WORDS.lines+' lines' : 'not enough lines yet';
+}
 function skyTick(ts){
   if(ts-SKY.last>40){
     if(SKY.drift) SKY.theta+=0.00016;
@@ -832,18 +971,18 @@ function skyTick(ts){
   SKY.raf=requestAnimationFrame(skyTick);
 }
 function skyPick(e){
-  const cv=document.getElementById('sky'); if(!cv||!SKY.stars.length) return -1;
+  const cv=document.getElementById('sky'); if(!cv) return -1;
   const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
-  const W=cv.clientWidth, H=cv.clientHeight, cx=W/2+SKY.tx, cy=H/2+SKY.ty;
-  const cos=Math.cos(-SKY.theta), sin=Math.sin(-SKY.theta);
+  if(SKY.view==='words'){
+    const W=cv.clientWidth, H=cv.clientHeight, cx=W/2+SKY.tx, cy=H/2+SKY.ty, k=SKY.k;
+    let best=-1;
+    WORDS.boxes.forEach((b,i)=>{ if(Math.abs(cx+b.x*k-mx)<b.tw*k/2 && Math.abs(cy+b.y*k-my)<b.th*k/2) best=i; });
+    return best;
+  }
   let best=-1, bd=13*13;
   SKY.stars.forEach((s,i)=>{
-    if(skyShow(s)===false) return;
-    const dx=(cx, s.wx*SKY.k), dy=s.wy*SKY.k;
-    const px=dx, py=dy;
-    const rx=px*cos-py*sin, ry=px*sin+py*cos;
-    const X=cx+rx, Y=cy+ry;
-    const d=(X-mx)*(X-mx)+(Y-my)*(Y-my);
+    if(s.px===undefined) return;
+    const d=(s.px-mx)*(s.px-mx)+(s.py-my)*(s.py-my);
     if(d<bd){ bd=d; best=i; }
   });
   return best;
@@ -857,8 +996,13 @@ function skyHover(e){
   SKY.hover=i;
   const tip=document.getElementById('sky-tip');
   if(i<0){ tip.style.opacity=0; return; }
+  if(SKY.view==='words'){
+    const b=WORDS.boxes[i];
+    tip.innerHTML='<b>'+esc(b.w)+'</b>in '+b.n+(b.n===1?' line':' lines')+' · click to read them';
+  } else {
   const s=SKY.stars[i];
   tip.innerHTML='<b>'+esc(s.d)+(s.app?' · '+esc(s.app.split(':')[0]):'')+(s.m?' · '+esc(s.m):'')+'</b>'+(s.e?esc(s.e)+' ':'')+esc(s.t);
+  }
   tip.style.left=Math.max(10,Math.min(mx+14, W-350))+'px';
   tip.style.top=Math.max(8,my-54)+'px'; tip.style.opacity=1;
 }
@@ -890,6 +1034,7 @@ function skyClick(e){
   if(SKY.moved) { SKY.moved=false; return; }
   const i=skyPick(e); if(i<0) return;
   SKY.hover=i;
+  if(SKY.view==='words'){ voiceFind(WORDS.boxes[i].w); return; }
   const s=SKY.stars[i];
   tab('hist'); const q=document.getElementById('q'); if(q){ q.value=s.t.slice(0,32); loadHistory(); }
 }
@@ -905,7 +1050,7 @@ function skyInit(){
   cv.addEventListener('wheel', skyWheel, {passive:false});
   cv.addEventListener('dblclick', skyReset);
   window.addEventListener('resize', ()=>drawSky());
-  loadSky(); skyCfgPaint();
+  loadSky(); skyCfgPaint(); paintViews();
   if(!SKY.raf) SKY.raf=requestAnimationFrame(skyTick);
 }
 
@@ -942,6 +1087,37 @@ function renderVoice(v){
     '<span style="font:600 15px/1.2 var(--display);color:var(--text)">'+p.wpm+' wpm</span></div>'+
     '<div class="hint" style="margin-top:4px">'+esc(p.line||'—')+'</div></div>';
   $('v-pace').innerHTML = pc('slowest', v.slowest) + pc('fastest', v.fastest);
+  renderInsights(v.insights);
+}
+const LCOL={ar:'#7fd6bd', en:'#f0c46a', mixed:'#c4a8f0'};
+function renderInsights(I){
+  if(!I) return;
+  const big=(v,u)=>'<div class="big" style="font-size:26px">'+v+(u?' <small style="font-size:12px;color:var(--dim);font-family:inherit">'+u+'</small>':'')+'</div>';
+  $('v-rhythm').innerHTML = big(I.active_days, I.active_days===1?'day you spoke':'days you spoke')+
+    '<div class="hint">longest run: '+I.longest_run+' days in a row'+
+    (I.best_day ? ' · biggest day: '+esc(I.best_day.d)+', '+I.best_day.words+' words' : '')+'</div>';
+  const W=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], wm=Math.max(1,...I.weekdays);
+  $('v-wk').innerHTML = I.weekdays.map((n,i)=>'<div title="'+W[i]+' · '+n+' lines"><i style="height:'+Math.max(2,Math.round(n/wm*60))+'px"></i><span>'+W[i][0]+'</span></div>').join('');
+  const top=I.weekdays.indexOf(wm);
+  $('v-wk-d').textContent = wm>1 ? W[top]+' is your talkiest day ('+wm+' lines)' : '';
+  const lwm=Math.max(1,...I.lang_weeks.map(b=>b.ar+b.en+b.mixed));
+  $('v-lw').innerHTML = I.lang_weeks.map(b=>{ const t=b.ar+b.en+b.mixed;
+    return '<div title="week of '+esc(b.from)+' · '+t+' lines"><div class="stack" style="height:'+Math.round(t/lwm*80)+'px">'+
+      ['mixed','en','ar'].map(k=>b[k]?'<i style="flex:'+b[k]+';background:'+LCOL[k]+'"></i>':'').join('')+'</div><span>'+esc(b.from)+'</span></div>'; }).join('');
+  const L=I.avg_len, lm=Math.max(1,L.ar,L.en,L.mixed);
+  $('v-len').innerHTML = [['ar','Arabic'],['en','English'],['mixed','Both']].map(([k,n])=>
+    '<div class="lrow"><span>'+n+'</span><span class="abar"><i style="width:'+Math.round(L[k]/lm*100)+'%;background:'+LCOL[k]+'"></i></span><b>'+L[k]+'</b></div>').join('')+
+    '<div class="hint">average words in a line, by the script it was written in</div>';
+  const V=I.vocab;
+  $('v-vocab').innerHTML = big(V.unique.toLocaleString(), 'different words')+
+    '<div class="hint">out of '+V.total.toLocaleString()+' words said · '+V.new_week+' new this week</div>'+
+    (V.new_examples.length ? '<div class="vw" style="margin-top:8px">'+V.new_examples.map(w=>'<button onclick="voiceFind(\''+esc(w).replace(/'/g,'')+'\')">'+esc(w)+'</button>').join('')+'</div>' : '');
+  $('v-apps').innerHTML = I.apps_lang.length ? I.apps_lang.map(a=>
+    '<div class="arow"><span class="an">'+esc(a.app)+'</span><span class="abar split">'+
+      ['ar','en','mixed'].map(k=>a[k]?'<i style="flex:'+a[k]+';background:'+LCOL[k]+'"></i>':'').join('')+
+    '</span><span class="ac">'+a.n+'</span></div>').join('') : '<div class="hint">No app names recorded yet.</div>';
+  $('v-moods').innerHTML = I.moods.length ? I.moods.map(m=>'<button title="'+m.n+' lines">'+esc(m.e)+' '+esc(m.m)+'<b>'+m.n+'</b></button>').join('')
+    : '<div class="hint">No moods yet.</div>';
 }
 function voiceFind(w){ tab('hist'); const q=$('q'); if(q){ q.value=w; loadHistory(); } }
 
