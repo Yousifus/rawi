@@ -125,6 +125,7 @@ Every key is optional; the table below covers the ones worth knowing.
 | `model` | `large-v3-turbo` | any `faster-whisper` size, or a path to a local CTranslate2 model |
 | `compute_type` | `float16` | `float16` on GPU, `int8` on CPU |
 | `language` | `auto` | `auto`, `ar`, `en`, … |
+| `languages` | `["ar", "en"]` | the languages you actually speak. The probe weighs only these, so a short line is a choice between two rather than between a hundred; a language outside this list is never forced (with nothing of yours above the floor and no hint, Whisper decides freely), and a single string is accepted. The Arabic and English prompts, and the romanised second look, are tuned for this pair |
 | `paste` | `true` | paste at the cursor instead of only copying |
 | `restore_clipboard` | `true` | put your old clipboard back after pasting |
 | `log` | `false` | keep a transcript history (`transcripts.jsonl`) |
