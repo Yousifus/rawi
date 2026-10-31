@@ -1,25 +1,24 @@
-"""rawi_mood — one emoji per dictation, earned by words he actually said.
+"""mood — one emoji per dictation, earned by words actually said.
 
-Not a model. A lexicon in his two languages plus punctuation cues, so every
-tag can be explained by the words that earned it ("why": matched tokens).
-No match, no emoji: an emoji invented for him would be a lie in a pretty font.
+Not a model. A lexicon in two languages plus punctuation cues, so every tag can be explained
+by the words that earned it ("why": matched phrases). No match, no emoji: an emoji invented
+for the speaker would be a lie in a pretty font.
 
-tag(text) -> {"e": "🤍", "m": "tender", "why": ["thank you"]}  or  None
+    tag(text) -> {"e": "🤍", "m": "tender", "why": ["thank you"]}  or  None
 """
+from __future__ import annotations
+
 import re
-import unicodedata
 
-_AR_DIAC = dict.fromkeys(map(ord, "\u064B\u064C\u064D\u064E\u064F\u0650\u0651\u0652\u0640"), None)
-
-
-def _norm(t):
-    t = (t or "").translate(_AR_DIAC)
-    t = t.replace("\u0623", "\u0627").replace("\u0625", "\u0627").replace("\u0622", "\u0627")
-    t = t.replace("\u0649", "\u064A").replace("\u0629", "\u0647")
-    return " " + re.sub(r"\s+", " ", t.lower()).strip() + " "
+from .text import norm
 
 
-# mood: (emoji, [(phrase, weight), ...])  -- phrases are matched on the normalized text
+def _padded(t: str | None) -> str:
+    """Normalised text with single spaces and a space at each end, so " phrase " matches whole."""
+    return " " + re.sub(r"\s+", " ", norm(t)) + " "
+
+
+# mood: (emoji, [(phrase, weight), ...])  -- phrases are matched on the normalised text
 MOODS = {
     "tender":   ("\U0001F90D", [("thank you", 3), ("thanks", 2), ("love you", 3), ("حبيبي", 3),
                                 ("حبيبتي", 3), ("قلبي", 2), ("عيوني", 2), ("احبك", 3), ("الله يسعدك", 3),
@@ -47,33 +46,36 @@ MOODS = {
                                  ("ممتن", 3), ("thank god", 3)]),
     "prayer":    ("\U0001F56F", [("inshallah", 3), ("ان شاء الله", 3), ("يارب", 3), ("دعاء", 3),
                                  ("الله كريم", 3), ("يا رب", 3), ("زابط", 2)]),
-    "code":      ("\u2328", [("code", 2), ("bug", 2), ("commit", 2), ("server", 1), ("build", 1),
+    "code":      ("⌨", [("code", 2), ("bug", 2), ("commit", 2), ("server", 1), ("build", 1),
                                ("port", 1), ("كود", 2), ("سيرفر", 2)]),
 }
 
-MIN_SCORE = 2
+MIN_SCORE = 2           # below this the evidence is too thin to tag anything
 
 
-def tag(text):
-    t = _norm(text)
+def _hit(hay: str, t: str) -> bool:
+    """Does phrase `hay` occur in padded text `t`? Latin words must start at a word boundary
+    ("lol" in "lollipop" is fine as a prefix match, "plan" in "airplane" is not)."""
+    if re.search(r"[؀-ۿ]", hay):
+        return hay in t                      # Arabic attaches prefixes, so substring it is
+    if " " in hay:
+        return (" " + hay + " ") in t
+    if re.match(r"[a-z0-9]", hay):
+        return re.search(r"(?<![a-z0-9])" + re.escape(hay), t) is not None
+    return hay in t                          # punctuation and emoji
+
+
+def tag(text: str | None) -> dict | None:
+    """The best-scoring mood for `text`, with the phrases that earned it; None below MIN_SCORE."""
+    t = _padded(text)
     if not t.strip():
         return None
     best, best_score, best_why = None, 0, []
-    for mood, (emoji, phrases) in MOODS.items():
+    for mood, (_emoji, phrases) in MOODS.items():
         score, why = 0, []
         for ph, w in phrases:
-            hay = _norm(ph).strip()
-            if not hay:
-                continue
-            if re.search(r"[\u0600-\u06FF]", hay):
-                hit = hay in t
-            elif " " in hay:
-                hit = (" " + hay + " ") in t
-            elif re.match(r"[a-z0-9]", hay):
-                hit = re.search(r"(?<![a-z0-9])" + re.escape(hay), t) is not None
-            else:
-                hit = hay in t
-            if hit:
+            hay = norm(ph)
+            if hay and _hit(hay, t):
                 score += w
                 why.append(ph)
         if score > best_score:

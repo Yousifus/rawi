@@ -6,13 +6,14 @@
 !/LICENSE
 !/README.md
 !/ARCHITECTURE.md
+!/AGENTS.md
+!/CLAUDE.md
 !/requirements.txt
 !/rawi.py
 !/rawi_app.py
 !/rawi_dock.py
-!/rawi_mood.py
+!/rawi_core/
 !/stats.py
-!/wave_overlay.py
 !/voice_out.py
 !/launch_voice.py
 !/app.html
@@ -25,6 +26,8 @@
 !/.github/
 !/start.bat
 !/rawi-app.bat
+!/start.command
+!/rawi-app.command
 !/site/
 
 # the landing page's Vercel link and env pulls stay local
@@ -48,4 +51,4 @@ transcripts*.jsonl
 *.db
 samples/
 models/
-_*
+/_*

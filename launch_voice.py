@@ -1,10 +1,8 @@
-"""Start the optional local voice server (voice_out.py) detached, logging beside it."""
-import os
-import subprocess
-import sys
+"""Start the optional local voice server (voice_out.py) detached, logging to voiceout.log."""
+from rawi_core import paths
+from rawi_core.system import current
 
-root = os.path.dirname(os.path.abspath(__file__))
-log = open(os.path.join(root, "voiceout.log"), "ab", buffering=0)
-p = subprocess.Popen([sys.executable, os.path.join(root, "voice_out.py")], cwd=root,
-                     stdout=log, stderr=log, creationflags=0x00000008, close_fds=True)
+plat = current()
+p = plat.spawn([plat.background_python(), paths.VOICE_SCRIPT], log_path=paths.VOICE_LOG,
+               cwd=paths.ROOT, detached=True)
 print("launched", p.pid)

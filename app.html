@@ -406,7 +406,7 @@ td .x:hover{color:var(--accent)}
   <div class="sub2">Say the trigger on its own and it expands into the text.</div>
   <div id="c-snips"></div>
   <div><button class="btn ghost" onclick="addSnip()">Add a snippet</button></div>
-  <div><button class="btn" onclick="applyCfg()">Save &amp; restart daemon</button><button class="btn ghost" onclick="openFolder()">Open folder</button></div>
+  <div><button class="btn" onclick="applyCfg()">Save &amp; restart daemon</button><button class="btn ghost" onclick="openFolder()">Open folder</button><button class="btn ghost" onclick="stopDaemon()" title="Stops the hotkeys and frees the model's memory. Save &amp; restart (or reopening the hub) starts it again.">Stop dictation</button></div>
   <div class="hint" id="cfgmsg"></div>
 </section>
 
@@ -935,6 +935,13 @@ function addSnip(){ renderSnips(); SNIPS.push({k:'',v:''}); renderSnips(); }
 function delSnip(i){ SNIPS.splice(i,1); renderSnips(); }
 
 async function openFolder(){ try{ await pywebview.api.open_folder(); }catch(e){} }
+async function stopDaemon(){
+  /* the in-window Quit: the tray has one on Windows, macOS has no tray */
+  try{
+    const r = await pywebview.api.stop_daemon();
+    $('cfgmsg').textContent = (r && r.length) ? 'Dictation stopped. Save & restart daemon starts it again.' : 'The daemon was not running.';
+  }catch(e){ $('cfgmsg').textContent = 'Could not stop the daemon: '+e; }
+}
 
 function boot(){
   if(window.__booted) return; window.__booted = true;

@@ -9,13 +9,16 @@ pyperclip==1.9.0
 # faster-whisper imports requests at runtime (huggingface_hub no longer pulls it in)
 requests>=2.32
 
-# typing the text into the focused window, and knowing which window that is
+# typing the text into the focused window (on macOS this also installs pyobjc)
 pyautogui>=0.9.54
-pygetwindow>=0.0.9
+# naming the focused window: Windows only (macOS asks osascript, Linux asks xdotool)
+pygetwindow>=0.0.9; sys_platform == "win32"
 
 # the hub window (optional but expected by rawi.py's default UI)
 pywebview==6.2.1
 pillow==12.1.1
+# the hub's tray icon; without it closing the hub window really closes it
+pystray>=0.19; sys_platform == "win32"
 
 # --test (record a line to a wav and transcribe it); also reads wav files
 soundfile>=0.12
