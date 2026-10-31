@@ -548,7 +548,7 @@ function tab(name){
 }
 
 /* ---------- home: is it running, how to use it, the keys, today ---------- */
-const KEYNAMES={ctrl_l:'Left Ctrl',ctrl_r:'Right Ctrl',alt_l:'Left Alt',alt_r:'Right Alt',caps_lock:'Caps Lock',
+const KEYNAMES={ctrl:'Left Ctrl',cmd:'Left Cmd',cmd_l:'Left Cmd',ctrl_l:'Left Ctrl',ctrl_r:'Right Ctrl',alt_l:'Left Alt',alt_r:'Right Alt',caps_lock:'Caps Lock',
   shift_l:'Left Shift',shift_r:'Right Shift'};
 function keyName(k){ k=String(k||''); return KEYNAMES[k] || k.toUpperCase().replace(/_/g,' '); }
 function keys(){ return Object.assign({paste:'f9',lang:'f10',talk:'f7',listen:'f8'}, CFG.keys||{}); }
@@ -1038,7 +1038,13 @@ async function setRead(v){
 async function fillCfg(){
   try{
     CFG = await pywebview.api.get_config();
-    $('c-key').value = CFG.hold_key||'ctrl_l';
+    // a hold key the list does not offer (macOS reports left Ctrl as "ctrl") gets its own option,
+    // so the select never shows blank and Save never writes an empty key
+    for(const [sel,val] of [['c-key',CFG.hold_key||'ctrl_l'],['c-model',CFG.model||'large-v3-turbo']]){
+      const s=$(sel);
+      if(![...s.options].some(o=>o.value===val)) s.add(new Option(sel==='c-key'?keyName(val)+' (from config.json)':val, val));
+      s.value = val;
+    }
     // the level shown is what the daemon will do: a stored level means nothing while cleanup is disabled
     paintLevel(CFG.clean ? (CFG.level||'light') : 'none'); paintTone(CFG.tone||'default');
     snips_loaded=false; renderProfiles(); renderSnips();

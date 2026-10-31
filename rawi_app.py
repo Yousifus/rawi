@@ -504,7 +504,7 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
         except Exception:
             return {"ok": False, "message": "Could not read config.json."}
         for k in ("hold_key", "language", "model"):
-            if k in patch:
+            if str(patch.get(k) or "").strip():   # an empty value would silently kill dictation
                 c[k] = patch[k]
         if "log" in patch:
             c["log"] = bool(patch["log"])
