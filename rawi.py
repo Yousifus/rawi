@@ -1005,27 +1005,37 @@ class Rawi:
         saved = None
         ours = None
         gen = 0
-        if self.cfg["restore_clipboard"]:
-            with _clip_lock:
-                saved = _saved_for_paste(pb)
+        delay = float(self.cfg.get("restore_delay") or 1.5)
+        try:
+            if self.cfg["restore_clipboard"]:
+                with _clip_lock:
+                    saved = _saved_for_paste(pb)
+                    pb.clearContents()
+                    pb.setString_forType_(text, string_type)
+                    ours = pb.changeCount()
+                    gen = _arm_restore(ours)
+            else:
                 pb.clearContents()
                 pb.setString_forType_(text, string_type)
-                ours = pb.changeCount()
-                gen = _arm_restore(ours)
-        else:
-            pb.clearContents()
-            pb.setString_forType_(text, string_type)
-        time.sleep(0.05)
-        self.injecting = True
-        try:
-            chord("v")
+            time.sleep(0.05)
+            self.injecting = True
+            try:
+                chord("v")
+            finally:
+                time.sleep(0.12)
+                self.injecting = False
+        except Exception:
+            # The board may already be cleared. Put the old clipboard back now, then let the error go on.
+            if saved is not None:
+                with _clip_lock:
+                    ours = pb.changeCount()
+                    gen = _arm_restore(ours)
+                delay = 0.0
+            raise
         finally:
-            time.sleep(0.12)
-            self.injecting = False
-        if saved is not None:
-            delay = float(self.cfg.get("restore_delay") or 1.5)
-            threading.Thread(target=_restore_pasteboard,
-                             args=(saved, ours, delay, gen), daemon=True).start()
+            if saved is not None:
+                threading.Thread(target=_restore_pasteboard,
+                                 args=(saved, ours, delay, gen), daemon=True).start()
 
 
 # While a restore is pending, the pasteboard holds a line we placed. Remember the user's

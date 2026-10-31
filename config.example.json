@@ -7,6 +7,7 @@
   "language": "auto",
   "paste": true,
   "restore_clipboard": true,
+  "restore_delay": 1.5,
   "beeps": true,
   "log": false,
   "max_seconds": 180,

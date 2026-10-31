@@ -127,6 +127,7 @@ Every key is optional; the table below covers the ones worth knowing.
 | `language` | `auto` | `auto`, `ar`, `en`, … |
 | `paste` | `true` | paste at the cursor instead of only copying |
 | `restore_clipboard` | `true` | put your old clipboard back after pasting |
+| `restore_delay` | `1.5` | macOS: seconds before the old clipboard comes back, so a busy app can paste first |
 | `log` | `false` | keep a transcript history (`transcripts.jsonl`) |
 | `min_seconds` / `max_seconds` | `0.25` / `180` | ignore taps / cap a runaway recording |
 | `listen` | `{key: "f8", silence_ms: 700, …}` | the always-on ear and its thresholds |

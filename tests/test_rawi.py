@@ -248,6 +248,33 @@ class TestMacPasteOverlap(unittest.TestCase):
         self.assertEqual(item.dataForType_("public.utf8-plain-text"), b"ORIGINAL")
         self.assertEqual(item.dataForType_("public.tiff"), b"IMG")
 
+    def test_a_failed_keypress_still_puts_the_original_back(self):
+        board = _FakePasteboard()
+        host = _PasteHost(delay=5.0)
+        started = []
+        real_thread = rawi.threading.Thread
+
+        def capture(*args, **kwargs):
+            thread = real_thread(*args, **kwargs)
+            started.append(thread)
+            return thread
+
+        def broken(_key):
+            raise RuntimeError("no keypress")
+
+        with patch.object(rawi, "_mac_pasteboard", lambda: board), \
+             patch.object(rawi, "_new_pasteboard_item", _BoardItem), \
+             patch.object(rawi, "_pasteboard_string_type", lambda: "public.utf8-plain-text"), \
+             patch.object(rawi, "chord", broken), \
+             patch.object(rawi.threading, "Thread", capture):
+            with self.assertRaises(RuntimeError):
+                rawi.Rawi._paste_mac(host, "alpha")
+            self.assertEqual(len(started), 1)
+            started[0].join(2)                      # no 5 s wait: a failure restores at once
+            self.assertFalse(started[0].is_alive())
+        self.assertEqual(board.plain, "ORIGINAL")
+        self.assertEqual(board.pasteboardItems()[0].dataForType_("public.tiff"), b"IMG")
+
 
 def _load_hub():
     if "webview" not in sys.modules:
