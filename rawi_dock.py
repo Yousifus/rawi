@@ -97,7 +97,7 @@ def open_hub():
         exe = pyw
     try:
         subprocess.Popen([exe, os.path.join(ROOT, "rawi_app.py")],
-                         creationflags=0x08000000)
+                         creationflags=0x08000000 if sys.platform.startswith("win") else 0)
     except Exception:
         pass
 

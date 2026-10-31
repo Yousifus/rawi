@@ -18,6 +18,10 @@ LOG = os.path.join(ROOT, "transcripts.jsonl")
 CFG = os.path.join(ROOT, "config.json")
 PAGE = os.path.join(ROOT, "app.html")
 PYW = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+IS_WIN = sys.platform.startswith("win")
+NO_WINDOW = 0x08000000 if IS_WIN else 0                     # CREATE_NO_WINDOW
+# DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP on Windows; a new session elsewhere
+DETACH = ({"creationflags": 0x00000008 | 0x00000200} if IS_WIN else {"start_new_session": True})
 CLEANER = "http://127.0.0.1:18080/health"
 
 
@@ -57,7 +61,15 @@ PIDFILE = os.path.join(ROOT, "daemon.pid")
 
 
 def pid_alive(pid: int) -> bool:
-    """True if the pid names a live process. OpenProcess, not os.kill(pid, 0)."""
+    """True if the pid names a live process. OpenProcess on Windows, os.kill(pid, 0) elsewhere."""
+    if not IS_WIN:
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except PermissionError:
+            return True
+        except Exception:
+            return False
     try:
         import ctypes
         k = ctypes.windll.kernel32
@@ -70,6 +82,18 @@ def pid_alive(pid: int) -> bool:
         return code.value == 259                      # STILL_ACTIVE
     except Exception:
         return False
+
+
+def kill_pid(pid: int) -> None:
+    if IS_WIN:
+        subprocess.run(["taskkill", "/PID", str(pid), "/F"],
+                       capture_output=True, creationflags=NO_WINDOW)
+        return
+    try:
+        import signal
+        os.kill(int(pid), signal.SIGTERM)
+    except Exception:
+        pass
 
 
 def daemon_pids():
@@ -91,7 +115,7 @@ def gpu_gate():
     try:
         out = subprocess.run([PYW if os.path.exists(PYW) else sys.executable, GATE_PY, "status"],
                              capture_output=True, text=True, timeout=20,
-                             creationflags=0x08000000)
+                             creationflags=NO_WINDOW)
         for line in reversed(out.stdout.strip().splitlines()):
             line = line.strip()
             if line.startswith("{"):
@@ -516,8 +540,7 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
         Quit must be the thing that gives the memory back."""
         stopped = []
         for pid in daemon_pids():
-            subprocess.run(["taskkill", "/PID", str(pid), "/F"],
-                           capture_output=True, creationflags=0x08000000)
+            kill_pid(pid)
             stopped.append(pid)
         try:
             os.remove(PIDFILE)
@@ -527,23 +550,25 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
 
     def restart_daemon(self):
         for pid in daemon_pids():
-            subprocess.run(["taskkill", "/PID", str(pid), "/F"],
-                           capture_output=True, creationflags=0x08000000)
+            kill_pid(pid)
         time.sleep(1.2)
         exe = PYW if os.path.exists(PYW) else sys.executable
         logf = open(os.path.join(ROOT, "dict.log"), "a", encoding="utf-8", errors="replace")
         subprocess.Popen([exe, os.path.join(ROOT, "rawi.py")],
-                         stdout=logf, stderr=logf, stdin=subprocess.DEVNULL,
-                         creationflags=0x00000008 | 0x00000200)  # DETACHED | NEW_GROUP
+                         stdout=logf, stderr=logf, stdin=subprocess.DEVNULL, **DETACH)
         time.sleep(2.0)
         return len(daemon_pids())
 
     def copy(self, text):
         try:
-            subprocess.run(["powershell.exe", "-NoProfile", "-Command",
-                            "$t=$input | Out-String; Set-Clipboard -Value $t"],
-                           input=text, capture_output=True, text=True,
-                           creationflags=0x08000000)
+            if IS_WIN:
+                subprocess.run(["powershell.exe", "-NoProfile", "-Command",
+                                "$t=$input | Out-String; Set-Clipboard -Value $t"],
+                               input=text, capture_output=True, text=True,
+                               creationflags=NO_WINDOW)
+            else:
+                import pyperclip
+                pyperclip.copy(text)
             return "copied"
         except Exception as e:
             return "copy failed: %s" % e
@@ -554,7 +579,10 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
         return "ok"
 
     def open_folder(self):
-        os.startfile(ROOT)
+        if IS_WIN:
+            os.startfile(ROOT)
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", ROOT])
         return "opened"
 
 
@@ -618,6 +646,8 @@ def main():
     def on_closing():
         # closing the window sends it to the tray; Quit from the tray really exits.
         # Say it, so a hidden window is never mistaken for a stopped one.
+        if _ICON[0] is None:
+            return True               # no tray (pystray missing, or macOS): a hidden window is lost
         try:
             win.hide()
         except Exception:
@@ -634,6 +664,8 @@ def main():
     win.events.closing += on_closing
 
     def start_tray():
+        if sys.platform == "darwin":
+            return                    # pystray on macOS needs the main thread, which webview owns
         time.sleep(1.0)
         _tray(win, api)
 

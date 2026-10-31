@@ -72,12 +72,21 @@ IS_WIN = sys.platform.startswith("win")
 IS_MAC = sys.platform == "darwin"
 NO_WINDOW = CREATE_NO_WINDOW if IS_WIN else 0     # subprocess flag; 0 everywhere else
 PASTE_MOD = "command" if IS_MAC else "ctrl"      # the paste chord's modifier
+MAC_LEFT = {"ctrl": "ctrl_l", "alt": "alt_l", "shift": "shift_l", "cmd": "cmd_l"}  # pynput aliases on macOS
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rawi_mood  # one emoji per dictation, earned by words
 
 
 def pid_alive(pid: int) -> bool:
+    if not IS_WIN:
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except PermissionError:
+            return True                      # alive, owned by someone else
+        except Exception:
+            return False
     try:
         import ctypes
         k = ctypes.windll.kernel32
@@ -212,6 +221,8 @@ def ensure_mouth():
         pass
     try:
         exe = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.exists(exe):
+            exe = sys.executable
         p = subprocess.Popen([exe, os.path.join(ROOT, "launch_voice.py")],
                              creationflags=NO_WINDOW)
         print(f"[rawi] voice server cold-start -> pid {p.pid}", flush=True)
@@ -978,7 +989,8 @@ class Rawi:
 def key_to_name(k) -> str:
     from pynput import keyboard
     if isinstance(k, keyboard.Key):
-        return k.name
+        # on macOS pynput gives Key.ctrl and Key.ctrl_l one keycode, so left Ctrl arrives as "ctrl"
+        return MAC_LEFT.get(k.name, k.name) if IS_MAC else k.name
     try:
         return k.char
     except Exception:
@@ -1163,6 +1175,11 @@ def start_dock():
     Its own process, not a thread: tkinter wants one interpreter per thread and the pill
     already owns one. Two roots in one process is a crash waiting for a busy morning.
     """
+    if IS_MAC:
+        # a click on a Tk window activates python on macOS, so the paste would land in the dock
+        print("[rawi] dock: not on macOS yet (it would take focus from the app you dictate into)",
+              flush=True)
+        return None
     dockpid = os.path.join(ROOT, "dock.pid")
     try:
         old = int(open(dockpid).read().strip() or 0)
@@ -1382,7 +1399,12 @@ def main() -> int:
             print("[rawi] wave overlay unavailable (tkinter?)", flush=True)
             return 1
         print("[rawi] demo: watch the bottom of the screen", flush=True)
-        Wave().demo(args.seconds)
+        if IS_MAC:
+            w = Wave(own_thread=False)
+            threading.Thread(target=lambda: (w.demo(args.seconds), w.quit()), daemon=True).start()
+            w.run()
+        else:
+            Wave().demo(args.seconds)
         return 0
 
     device, ctype = "cuda", cfg["compute_type"]
@@ -1437,12 +1459,14 @@ def main() -> int:
 
     # live mode
     target = cfg["hold_key"]
+    if IS_MAC:
+        target = MAC_LEFT.get(target, target)    # "ctrl" and "ctrl_l" are one key there
     mode = cfg["mode"]
     print(f"[rawi] key={target} mode={mode} lang={cfg['language']} paste={cfg['paste']}", flush=True)
 
     if Wave is not None:
         try:
-            d.wave = Wave()
+            d.wave = Wave(own_thread=not IS_MAC)     # macOS: Tk gets the main thread at the end
             print("[rawi] wave overlay ready", flush=True)
         except Exception as e:
             print(f"[rawi] wave overlay failed ({type(e).__name__}: {e}); continuing without it", flush=True)
@@ -1595,7 +1619,15 @@ def main() -> int:
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         print("[rawi] listening. Ctrl+C here to quit.", flush=True)
         try:
-            listener.join()
+            if IS_MAC and d.wave is not None:
+                import signal
+                signal.signal(signal.SIGINT, lambda *_: d.wave.quit())
+                if not d.wave.run():          # Tk could not start: dictate without the pill
+                    d.wave = None
+                    signal.signal(signal.SIGINT, signal.default_int_handler)
+                    listener.join()
+            else:
+                listener.join()
         except KeyboardInterrupt:
             pass
     return 0

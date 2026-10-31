@@ -17,7 +17,7 @@ the exact error. Nothing here is destructive: no audio leaves the machine, and h
 
 ```bash
 git clone https://github.com/Yousifus/rawi.git && cd rawi
-python3 -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate   # stock macOS python3 is 3.9: too old
 pip install -r requirements.txt
 cp config.example.json config.json
 ```

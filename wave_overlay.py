@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 import queue
+import sys
 import threading
 import time
 
@@ -34,17 +35,44 @@ def _capsule(x0, y0, x1, y1, r, n=24):
     return [c for p in pts for c in p]
 
 
+def _accessory_app() -> None:
+    """macOS: no Dock icon and no activation for the pill's process (needs pyobjc; best effort)."""
+    try:
+        from AppKit import NSApplication
+        NSApplication.sharedApplication().setActivationPolicy_(1)   # Accessory
+    except Exception:
+        pass
+
+
 class Wave:
-    def __init__(self, fps: int = 30):
+    def __init__(self, fps: int = 30, own_thread: bool = True):
+        """own_thread=False is for macOS, where Tk must live on the main thread: the caller
+        builds the Wave anywhere, then hands the main thread to run() once setup is done."""
         self.q: queue.Queue = queue.Queue()
         self._cmd: queue.Queue = queue.Queue()
         self._levels = [0.0 for _ in range(BARS)]
         self._fps = fps
         self._t = None
         self._ready = threading.Event()
-        t = threading.Thread(target=self._run, daemon=True)
-        t.start()
-        self._ready.wait(timeout=5)
+        if own_thread:
+            t = threading.Thread(target=self._run, daemon=True)
+            t.start()
+            self._ready.wait(timeout=5)
+
+    def run(self) -> bool:
+        """Run the pill on the calling thread until quit(). False if Tk could not start."""
+        try:
+            self._run()
+            return True
+        except Exception as e:
+            print(f"[rawi] wave overlay failed ({type(e).__name__}: {e})", flush=True)
+            return False
+
+    def quit(self) -> None:
+        try:
+            self._cmd.put_nowait("quit")
+        except Exception:
+            pass
 
     # ---------- public ----------
     def flash(self, text: str, ok: bool = True, seconds: float = 2.2) -> None:
@@ -76,18 +104,26 @@ class Wave:
     def _run(self) -> None:
         import tkinter as tk
 
+        mac = sys.platform == "darwin"
         root = tk.Tk()
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        root.attributes("-transparentcolor", BG)
-        root.configure(bg=BG)
+        bg = BG
+        if mac:
+            _accessory_app()          # after tk.Tk(): Tk must create NSApp itself
+            # a floating, non-activating window, so showing the pill never takes focus
+            root.tk.call("::tk::unsupported::MacWindowStyle", "style", root._w, "help", "none")
+            bg = CARD        # Tk's systemTransparent drew black here, so the corners take the card colour
+        else:
+            root.attributes("-transparentcolor", BG)
+        root.configure(bg=bg)
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
         x = (sw - W) // 2
         y = sh - H - 72
         root.geometry(f"{W}x{H}+{x}+{y}")
 
-        canvas = tk.Canvas(root, width=W, height=H, bg=BG, highlightthickness=0, bd=0)
+        canvas = tk.Canvas(root, width=W, height=H, bg=bg, highlightthickness=0, bd=0)
         canvas.pack()
 
         canvas.create_polygon(_capsule(M, M, W - M, H - M, (H - 2 * M) // 2),
@@ -147,6 +183,9 @@ class Wave:
                             root.deiconify()
                             root.attributes("-topmost", True)
                         continue
+                    if c == "quit":
+                        root.destroy()
+                        return
                     if c == "show" and not self._visible:
                         self._visible = True
                         root.deiconify()
