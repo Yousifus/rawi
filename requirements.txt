@@ -25,3 +25,6 @@ soundfile>=0.12
 # ...or for Arabic + English (voice.json "engine": "piper"):
 # GPL-3.0-or-later. Optional, never installed by default, and not vendored.
 # piper-tts==1.8.0
+
+# Apple silicon (optional): Whisper on the Mac GPU, ~4-6x faster than the CPU (rawi_mlx.py)
+# mlx-whisper==0.4.3

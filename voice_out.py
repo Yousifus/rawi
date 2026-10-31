@@ -68,11 +68,11 @@ def pick_device():
     return None
 
 
-# en_US-libritts_r-medium is CC BY 4.0. en_US-ryan-high is CC BY-NC-SA 4.0 (non-commercial),
-# so it cannot be the default in an MIT program someone may use at work. LibriTTS-R keeps the
-# American accent of that old default, at medium size so the first download stays small.
-# en_GB-cori-high is public domain, but it is British. ar_JO-kareem-medium stays: Piper
-# publishes no other Arabic voice.
+# en_US-ryan-high is CC BY-NC-SA 4.0 (non-commercial), so it is not the default. LibriTTS-R's
+# dataset is CC BY 4.0 and keeps the American accent, but like ar_JO-kareem it was fine-tuned from
+# en_US-lessac-medium, whose dataset does not allow commercial voice synthesis (see the README's
+# Voice section). en_GB-cori-high is the English voice trained from scratch on public-domain data
+# (British). ar_JO-kareem-medium stays: Piper publishes no other Arabic voice.
 PIPER_VOICES = {"ar": "ar_JO-kareem-medium", "en": "en_US-libritts_r-medium"}
 # rhasspy/piper-voices at this commit. Pinned so a moving branch cannot swap the files.
 PIPER_REV = "b4e358ffcb232591bf73a540e70f7de528e4174a"

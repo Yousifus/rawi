@@ -112,11 +112,20 @@ DEFAULTS = {
     "compute_type": "float16",
     "device": "auto",       # auto = cuda when a CUDA device is present, else cpu int8
     "language": "auto",
+    # the languages he actually speaks. The probe weighs only these, so a short bilingual line is a
+    # choice between two, not between a hundred. A string is accepted and means one language.
+    "languages": ["ar", "en"],
     "paste": True,
     "restore_clipboard": True,
     "beeps": True,
     "log": False,
-    "max_seconds": 180,
+    # 0 = no cap, and each mode has its own. A hold is capped at 5 minutes because a key-up that
+    # never arrives behaves exactly like a latch; a recording started on purpose is not capped. A
+    # plain number is the old format and is ignored (it would cut every hold to that number).
+    "max_seconds": {"hold": 300, "toggle": 0, "latch": 0},
+    # Whisper loops a phrase tens of times, people repeat on purpose five times. Eight is the line,
+    # and the words in repeat_collapse.keep (dhikr, laughter) are never collapsed at any count.
+    "repeat_collapse": {"min_repeats": 8},
     "dumb": False,
     "mood": "auto",      # auto = tag each dictation with one earned emoji; off = never
     "talk": False,       # voice mode: speak the transcript aloud instead of pasting it
@@ -423,7 +432,7 @@ class Ear:
                 if not self.on:
                     continue
                 self.done += 1
-                self.d._work(seg, len(seg) / float(SR), listen=True)
+                self.d._work(seg, len(seg) / float(SR), listen=True, reason="ear")
             except Exception as e:
                 print(f"[rawi] ear error {type(e).__name__}: {e}", flush=True)
 
@@ -472,6 +481,26 @@ def apply_snippets(text: str, cfg) -> str:
     return text
 
 
+LANG_FLOOR = 0.30      # a language must have heard something itself before it may win
+
+
+def _languages(cfg) -> tuple:
+    """The languages to weigh: a list, or a single string, never a list of characters."""
+    raw = (cfg or {}).get("languages")
+    if raw is None:
+        return ("ar", "en")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return ("ar", "en")
+    out = []
+    for x in raw:
+        code = str(x).strip().lower()
+        if code and code not in out:
+            out.append(code)
+    return tuple(out) or ("ar", "en")
+
+
 def dict_terms(cfg):
     d = cfg.get("dictionary") or {}
     names = [str(x).strip() for x in (d.get("names") or []) if str(x).strip()]
@@ -482,6 +511,146 @@ def dict_terms(cfg):
             if a.strip() and b.strip():
                 pairs.append((a.strip(), b.strip()))
     return names, pairs
+
+
+# Lines Whisper invents on silence or room noise: learned from YouTube subtitles, never dictated.
+HALLUCINATIONS = ("اشتركوا في القناة", "اشترك في القناة", "لا تنسوا الاشتراك في القناة",
+                  "ترجمة نانسي قنقر", "شكرا للمشاهدة", "thanks for watching", "thank you for watching",
+                  "please subscribe", "subtitles by the amara.org community")
+_PUNCT = "،,.!?؟؛;:\"'«»…-"
+_CAP_TAP_GRACE = 5.0     # a tap this soon after the cap stopped a recording is the stop he meant
+
+# Repetition he means and must keep: dhikr, and laughter. A loop and a prayer look alike to a
+# repeated-phrase filter, so the difference is written down instead of guessed at a count.
+KEPT_REPEATS = ("سبحان الله", "الحمد لله", "الله أكبر", "لا إله إلا الله", "أستغفر الله",
+                "لا حول ولا قوة إلا بالله", "صلى الله عليه وسلم", "إن شاء الله",
+                "ha", "hah", "haha", "hahaha", "heh", "hehe", "hihi", "هه", "ههه", "هههه", "هاها")
+
+
+def _num(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+# The cap, as Yousef chose it on 2026-11-01 after seeing how OpenWhispr does it: a hold gets a
+# ceiling, because a hold whose key-up is missed is a latch with a stuck key; toggle and latch are
+# off, because those are the modes he starts on purpose to dictate at length. {"hold": 0} turns the
+# net off; any mode can still be given its own number in the object.
+CAP_DEFAULTS = {"hold": 300.0, "toggle": 0.0, "latch": 0.0}
+
+
+def legacy_max_seconds(cfg):
+    """A bare number is what the first version of this setting looked like (and what an older hub
+    wrote). It cannot mean what it used to, so it is reported and ignored, never silently obeyed."""
+    raw = (cfg or {}).get("max_seconds")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return max(0.0, float(raw))
+
+
+def max_seconds_for(cfg, mode: str = "hold") -> float:
+    """How long one way of recording may run: 0 means no cap at all.
+
+    The default is a ceiling on a hold and nothing on toggle or latch (CAP_DEFAULTS). An object in
+    the config overrides per mode, and a mode it does not name keeps its default, so {"latch": 600}
+    changes a latch and leaves the hold ceiling where it is. A bare number is an old-format value:
+    it is reported at startup and ignored, because the same 180 now means something else."""
+    want = str(mode or "hold")
+    default = CAP_DEFAULTS.get(want, 0.0)
+    raw = (cfg or {}).get("max_seconds")
+    if isinstance(raw, dict):
+        if want in raw:
+            return max(0.0, _num(raw.get(want), default))
+        return default
+    return default
+
+
+def _repeat_settings(cfg):
+    """The collapse threshold and the words exempt from it, each overridable on its own."""
+    raw = (cfg or {}).get("repeat_collapse")
+    raw = raw if isinstance(raw, dict) else {}
+    given = raw.get("min_repeats")
+    minimum = int(_num(given, 8.0)) if given is not None else 8
+    keep = raw.get("keep")
+    # his list ADDS to the built-in one. It used to replace it, so following the README to keep a
+    # lone «الله» silently dropped the dhikr and the laughter, which is the harm this filter exists
+    # to prevent. A user list must never remove a protection he cannot see.
+    extra = keep if isinstance(keep, (list, tuple)) else ()
+    kept = list(KEPT_REPEATS) + [str(k) for k in extra if str(k).strip()]
+    return max(2, minimum), {_norm(k) for k in kept if k.strip()}
+
+
+def _stock_only(text: str) -> bool:
+    """True when every word of the transcript belongs to one of Whisper's stock lines, in any
+    number of repeats. One real word is enough to keep the whole text, stock line included."""
+    words = [w for w in (_norm(x.strip(_PUNCT)) for x in text.split()) if w]
+    if not words:
+        return True
+    phrases = [tuple(_norm(h).split()) for h in HALLUCINATIONS]
+    i = 0
+    while i < len(words):
+        for phrase in phrases:
+            if phrase and tuple(words[i:i + len(phrase)]) == phrase:
+                i += len(phrase)
+                break
+        else:
+            return False
+    return True
+
+
+def drop_hallucinations(text: str, cfg=None) -> str:
+    """Whisper's two failure modes on silence and noise, removed after the fact.
+
+    A loop: a word or short phrase repeated over and over («سعيدة، سعيدة، سعيدة …»). Repeated
+    `repeat_collapse.min_repeats` times (8 by default; people repeat on purpose five times, Whisper
+    repeats forty) it collapses to one. Dhikr and laughter are exempt at any count, because
+    «سبحان الله» five times is dictation and a laugh is a word.
+    A stock line: «اشتركوا في القناة» and friends, dropped only when the transcript is nothing but
+    stock lines, however many times they were repeated, so a real call to subscribe keeps its words.
+    Whatever it removes is printed, so a shortened dictation is explainable afterwards."""
+    if not text:
+        return text
+    min_repeats, keep = _repeat_settings(cfg)
+    words = text.split()
+    key = [_norm(w.strip(_PUNCT)) for w in words]
+    out, i, collapsed = [], 0, 0
+    while i < len(words):
+        # A kept phrase is copied through whole, however long the run: dhikr and laughter are
+        # dictation. Skipping two words at a time is what keeps «لا لا» from dying one «لا» at a time.
+        held = 0
+        for n in (4, 3, 2, 1):
+            piece = key[i:i + n]
+            if len(piece) == n and all(piece) and " ".join(piece) in keep:
+                held = n
+                break
+        if held:
+            out.extend(words[i:i + held])
+            i += held
+            continue
+        for n in (1, 2, 3, 4):
+            unit = key[i:i + n]
+            if len(unit) < n or not all(unit):
+                continue
+            reps = 1
+            while key[i + reps * n:i + (reps + 1) * n] == unit:
+                reps += 1
+            if reps >= min_repeats:
+                out.extend(words[i:i + n])
+                i += reps * n
+                collapsed += reps - 1
+                break
+        else:
+            out.append(words[i])
+            i += 1
+    text = " ".join(out)
+    if collapsed:
+        print(f"[rawi] hallucination filter: collapsed {collapsed} repeated word(s)", flush=True)
+    if _stock_only(text):
+        print("[rawi] hallucination filter: dropped a stock line", flush=True)
+        return ""
+    return text
 
 
 def apply_dictionary(text, cfg):
@@ -543,9 +712,17 @@ class Rawi:
         self.model_lock = threading.Lock()
         self.frames: list[np.ndarray] = []
         self.stream = None
+        self._mic_lock = threading.Lock()
+        self._mic_used = 0.0
         self.recording = False
+        self._capped = False            # the cap already fired for this recording
+        self._cap_stopped = 0.0         # when it did, so the next key press is a stop, not a start
+        self._cap_s = 0.0               # this recording's cap in seconds; 0 = none
+        self.key_down = False           # a key is physically held right now (set by the listener)
+        self._cap_mode = str(self.cfg.get("mode") or "hold")
         self.started_at = 0.0
         self.busy = threading.Semaphore(1)
+        self._stop_lock = threading.Lock()      # the cap and a release can land in the same instant
         self.pending = collections.deque()      # recordings waiting for the model, in order
         self.wave = None
         # True while we are injecting our own Ctrl+V. pynput sees injected keys as real,
@@ -582,6 +759,7 @@ class Rawi:
     def pick_lang(self, audio):
         """Ask the encoder what it hears before deciding how to write it. A short line
         from a bilingual speaker is exactly where a blind auto-detect gets it wrong."""
+        self.lang_probs = {}       # a failed probe must not decide this line from the last one's
         try:
             lang, prob, allp = self.model.detect_language(audio, language_detection_segments=2)
             self.lang_probs = dict(allp or [])
@@ -609,7 +787,25 @@ class Rawi:
         lang, prob = language, 1.0
         if lang is None:
             got, prob = self.pick_lang(audio)
-            need = 0.85 if self.lang_hint else 0.60   # a man mid-conversation keeps his language
+            # He speaks two languages, so weigh only those two: a probe that spreads itself over
+            # look-alikes (ar/fa/ur, en/nl) still says which of HIS languages it heard. A raw
+            # "en 0.51" with the rest on strangers is a clear English line, not a coin toss.
+            pair = _languages(self.cfg)
+            two = {x: float(self.lang_probs.get(x) or 0.0) for x in pair}
+            total = sum(two.values())
+            best = max(two, key=two.get) if two else None
+            best_raw = two.get(best) or 0.0
+            # Only a language that itself heard something may win. Arabic spread thinly over
+            # fa/ur with a little en on top renormalises to a loud "en" while English heard
+            # almost nothing, and forcing it made Whisper translate Arabic into English.
+            if total > 0.05 and best_raw >= LANG_FLOOR:
+                got, prob = best, best_raw / total
+            else:
+                got, prob = None, (best_raw / total if total > 0.05 else 0.0)
+            # a man mid-conversation keeps his language; switching needs 0.75 of the two-way
+            # weight (it was 0.85 of the raw one, which a real accented "hello" never reached,
+            # so English was forced through Arabic and came back translated: «مرحباً»)
+            need = 0.75 if self.lang_hint and got != self.lang_hint else 0.60
             if prob >= need and got:
                 lang = got
             elif self.lang_hint:
@@ -632,6 +828,8 @@ class Rawi:
         if wrote == "en":
             no_arabic = not any("\u0600" <= ch <= "\u06FF" for ch in text)
             roman = [w for w in self.ROMAN_AR if w in text.lower()]
+            # Raw, not two-way, on purpose: this is the last look for Arabic among the letters,
+            # not a re-run of the decision above, and the two thresholds live on different scales.
             ar_runner = float(self.lang_probs.get("ar") or 0.0)
             en_stop = sum(1 for w in re.findall(r"[a-z']+", text.lower()) if w in self.EN_STOP)
             if no_arabic and (roman or (ar_runner >= 0.35 and en_stop <= 2)):
@@ -650,11 +848,12 @@ class Rawi:
                 else:
                     print(f"[rawi] second look: stayed english (markers={roman[:2]}, "
                           f"runner={ar_runner:.2f}, en_stop={en_stop})", flush=True)
-        text = apply_dictionary(text, self.cfg)
-        if wrote in ("ar", "en") and (prob >= 0.60 or lang is not None):
+        text = apply_dictionary(drop_hallucinations(text, self.cfg), self.cfg)
+        if wrote in _languages(self.cfg) and (prob >= 0.60 or lang is not None):
             self.lang_hint = wrote
         self.last_lang = (lang, round(prob, 2))
-        print(f"[rawi] wrote as {wrote} (probe {prob:.2f})", flush=True)
+        heard = " ".join(f"{x} {float(self.lang_probs.get(x) or 0):.2f}" for x in _languages(self.cfg))
+        print(f"[rawi] wrote as {wrote} (probe {prob:.2f}; raw {heard}; hint {self.lang_hint})", flush=True)
         return text, (wrote or "?"), float(getattr(info, "duration", 0.0) or 0.0)
 
     # ---------- the ear ----------
@@ -679,6 +878,8 @@ class Rawi:
         on = bool(on)
         if on == self.ear.on:
             return
+        if on:
+            self.mic_open()
         self.ear.on = on
         if self.wave is not None:
             try:
@@ -695,6 +896,40 @@ class Rawi:
             print("[rawi] ear closed", flush=True)
 
     # ---------- audio ----------
+    def mic_open(self):
+        """Open the microphone if it is closed (~75 ms on a MacBook)."""
+        with self._mic_lock:
+            self._mic_used = time.time()
+            if self.stream is None:
+                self.stream = self.sd.InputStream(samplerate=SR, channels=1, dtype="float32",
+                                                  callback=self._cb, blocksize=0)
+                self.stream.start()
+
+    def _mic_closer(self):
+        """Close an idle microphone. macOS shows its orange mic light the whole time a stream is
+        open, and AirPods drop to call quality, so on a Mac rawi holds the mic only while it is used.
+        "mic_close_after": seconds idle before it closes; 0 keeps it open (the default elsewhere)."""
+        while True:
+            time.sleep(1.0)
+            self.mic_close_if_idle()
+
+    def mic_close_if_idle(self) -> bool:
+        after = float(self.cfg.get("mic_close_after", 5 if IS_MAC else 0) or 0)
+        with self._mic_lock:
+            if self.stream is None or after <= 0:
+                return False
+            if self.recording or (self.ear is not None and self.ear.on):
+                self._mic_used = time.time()
+                return False
+            if time.time() - self._mic_used < after:
+                return False
+            st, self.stream = self.stream, None
+        try:
+            st.stop(); st.close()
+        except Exception as e:
+            print(f"[rawi] closing the mic failed: {e}", flush=True)
+        return True
+
     def _cb(self, indata, frames, time_info, status):  # sounddevice callback
         if self.ear is not None and self.ear.on and not self.recording:
             self.ear.feed(indata)
@@ -705,6 +940,26 @@ class Rawi:
                     pass
         if self.recording:
             self.frames.append(indata.copy())
+            # max_seconds was a setting nothing read: a latched recording ran 22 minutes and Whisper
+            # filled the silence with stock lines. Stop it here (off the audio thread), at the cap
+            # this recording's own mode declares. A mode with 0 is never cut.
+            if (not self._capped and self._cap_s and
+                    time.time() - self.started_at > self._cap_s):
+                self._capped = True
+                self._cap_stopped = time.time()
+                print(f"[rawi] max_seconds ({self._cap_s:g}, {self._cap_mode}) reached, stopping",
+                      flush=True)
+                if self.wave is not None:
+                    try:
+                        self.wave.flash(f"stopped at {self._cap_s:g}s", ok=False, seconds=2.2)
+                    except Exception:
+                        pass
+                threading.Thread(
+                    target=self.stop_and_process,
+                    # a key that is really down, not the mode: a recording the pill started in hold
+                    # mode has no Ctrl held, and used to be copied instead of pasted for nothing
+                    args=(f"cap {self._cap_s:g}s", not self.key_down),
+                    daemon=True).start()
             if self.wave is not None:
                 try:
                     rms = float(np.sqrt(np.mean(np.square(indata))))
@@ -712,16 +967,39 @@ class Rawi:
                 except Exception:
                     pass
 
-    def start_rec(self):
+    def start_rec(self, latched: bool = False):
         if self.recording:
             return
+        self.mic_open()
         self.frames = []
-        self.recording = True
-        self.started_at = time.time()
+        self._capped = False
+        self._cap_mode = "latch" if latched else str(self.cfg.get("mode") or "hold")
+        self._cap_s = max_seconds_for(self.cfg, self._cap_mode)
+        self.started_at = time.time()   # before the flag: the audio callback caps on this time,
+        self.recording = True           # and a callback between the two lines used to see an old one
         beep(880, 55, self.cfg["beeps"])
         if self.wave is not None:
             self.wave.show()
         print("[rawi] recording...", flush=True)
+
+    def toggle_rec(self):
+        """The toggle key. Start, stop, or absorb the tap he meant as a stop when the cap had
+        already stopped the recording: with no recording running, the next press used to start a
+        second one, so the tap after an auto-stop recorded his silence."""
+        if self.recording:
+            self.stop_and_process("tap")
+            return "stopped"
+        if self._cap_stopped and time.time() - self._cap_stopped <= _CAP_TAP_GRACE:
+            self._cap_stopped = 0.0
+            print("[rawi] the cap already stopped that recording; this tap did nothing", flush=True)
+            if self.wave is not None:
+                try:
+                    self.wave.flash("stopped at the cap", ok=False, seconds=1.8)
+                except Exception:
+                    pass
+            return "capped"
+        self.start_rec()
+        return "started"
 
     def abort_rec(self):
         """Discard a recording that turned out to be a shortcut, without a beep."""
@@ -730,10 +1008,17 @@ class Rawi:
         if self.wave is not None:
             self.wave.hide()
 
-    def stop_and_process(self):
-        if not self.recording:
-            return
-        self.recording = False
+    def stop_and_process(self, reason: str = "release", paste: bool = True):
+        """Reason travels with the audio: history must be able to say why a line ended
+        (release, tap, stop, ear, cap 300s). paste=False is for a cap that fires while a key is still
+        held: the text goes to the clipboard and the pill says so, because injecting Ctrl+V while
+        the physical Ctrl is down would drop his modifier state."""
+        # The cap fires on the audio thread while a key release may arrive at the same moment;
+        # without this, both could pass the check and the same audio would be transcribed twice.
+        with self._stop_lock:
+            if not self.recording:
+                return
+            self.recording = False
         beep(520, 55, self.cfg["beeps"])
         if self.wave is not None:
             self.wave.hide()
@@ -748,16 +1033,18 @@ class Rawi:
             print("[rawi] too short, ignored", flush=True)   # the audio's length, not the wall clock
             return
         print(f"[rawi] captured {dur:.1f}s ({len(audio)/SR:.1f}s audio), transcribing...", flush=True)
-        threading.Thread(target=self._work, args=(audio, dur), daemon=True).start()
+        threading.Thread(target=self._work, args=(audio, dur, False, reason, paste),
+                         daemon=True).start()
 
     # ---------- work ----------
-    def _log_record(self, cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen):
+    def _log_record(self, cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen,
+                    reason="release"):
         try:
             log_transcript({"ts": datetime.datetime.now().isoformat(timespec="seconds"),
                             "seconds": round(dur, 2), "language": lg, "model": self.cfg["model"],
                             "transcribe_s": round(took, 2), "clean_s": round(ctook, 2),
                             "clean": cstatus, "text": cleaned, "raw": text, "app": app,
-                            "fid": fid,
+                            "fid": fid, "stop": reason,
                             "mood": (rawi_mood.tag(cleaned) if str(self.cfg.get("mood", "auto")) != "off" else None),
                             "to": ("voice" if self.cfg.get("talk") else ""),
                             "listen": bool(listen)},
@@ -813,11 +1100,12 @@ class Rawi:
                             + buf[:34], ok=ok, seconds=2.6)
         print(f"[rawi] talk send via {how} ok={ok}: {buf[:90]}", flush=True)
 
-    def _work(self, audio: np.ndarray, dur: float, listen: bool = False):
+    def _work(self, audio: np.ndarray, dur: float, listen: bool = False,
+              reason: str = "release", paste: bool = True):
         if not self.busy.acquire(blocking=False):
             # Never lose words to a slow machine: hold the audio, do it next.
             if len(self.pending) < QUEUE_MAX:
-                self.pending.append((audio, dur, listen))
+                self.pending.append((audio, dur, listen, reason, paste))
                 print(f"[rawi] still transcribing the last one; queued ({len(self.pending)})", flush=True)
                 if self.wave is not None:
                     self.wave.flash("queued \u00b7 one at a time", ok=True, seconds=1.8)
@@ -853,12 +1141,12 @@ class Rawi:
                 cleaned, cstatus = snip, "snippet"
             print(f"[rawi] {lg} in {took:.2f}s (+clean {ctook:.2f}s {cstatus}): {cleaned}", flush=True)
             fid = fidelity(text, cleaned)
-            self.last = {"raw": text, "clean": cleaned, "app": app,
-                         "ts": time.time(), "pasted": bool(self.cfg["paste"]) and not listen}
+            self.last = {"raw": text, "clean": cleaned, "app": app, "stop": reason,
+                         "ts": time.time(), "pasted": bool(self.cfg["paste"]) and paste and not listen}
             if listen and self.cfg.get("talk"):
                 # Voice mode: his pauses are breathing, not sentences ending.
                 self._talk_add(cleaned)
-                self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen)
+                self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen, reason)
                 return
             if listen:
                 # his words, ready — never pasted into a window he did not choose
@@ -870,9 +1158,20 @@ class Rawi:
                 beep(660, 45, self.cfg["beeps"])
                 if self.wave is not None:
                     self.wave.flash("\u2713 copied \u00b7 " + cleaned[:44])
-            elif self.cfg["paste"]:
+            elif self.cfg["paste"] and paste:
                 self.paste(cleaned)
-            self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen)
+            elif self.cfg["paste"] and not paste:
+                # the cap fired with his key still down: copy, do not inject (OpenWhispr's choice,
+                # and the safe one until Ctrl+V-while-held is measured)
+                try:
+                    import pyperclip
+                    pyperclip.copy(cleaned)
+                except Exception:
+                    pass
+                beep(660, 45, self.cfg["beeps"])
+                if self.wave is not None:
+                    self.wave.flash("\u2713 copied \u00b7 key held, not pasted", ok=True, seconds=2.4)
+            self._log_record(cleaned, text, lg, app, took, ctook, cstatus, dur, fid, listen, reason)
         except Exception as e:
             print(f"[rawi] ERROR {type(e).__name__}: {e}", flush=True)
             beep(220, 120, self.cfg["beeps"])
@@ -1059,7 +1358,7 @@ def ipc_server(d, host="127.0.0.1", port=18090):
         try:
             if cmd == "toggle":
                 if d.recording:
-                    d.stop_and_process()
+                    d.stop_and_process("tap")
                 else:
                     d.start_rec()
             elif cmd == "start":
@@ -1099,7 +1398,7 @@ def ipc_server(d, host="127.0.0.1", port=18090):
                     want = not bool(d.ear and d.ear.on)
                 d.set_listen(bool(want))
             elif cmd == "stop":
-                d.stop_and_process()
+                d.stop_and_process("stop")
             elif cmd == "swap":
                 res = d.unpaste()
                 busy = not d.busy.acquire(blocking=False)
@@ -1300,8 +1599,14 @@ def doctor(cfg: dict, deep: bool = False) -> int:
         n = ctranslate2.get_cuda_device_count()
     except Exception:
         n = 0
+    import rawi_mlx
+    engine = str(cfg.get("engine") or "auto").lower()
     if n:
         ok(f"{n} CUDA device(s) visible to ctranslate2")
+    elif IS_MAC and engine in ("auto", "mlx") and rawi_mlx.available():
+        ok("Apple GPU via MLX (mlx-whisper) \u2014 no CUDA needed")
+    elif IS_MAC:
+        warn("no CUDA on a Mac \u2014 CPU is slow; on Apple silicon `pip install mlx-whisper` runs it on the GPU")
     else:
         warn("no CUDA device visible \u2014 will run on CPU (set compute_type to int8 and a small model)")
 
@@ -1405,34 +1710,49 @@ def main() -> int:
             Wave().demo(args.seconds)
         return 0
 
-    device, ctype = "cuda", cfg["compute_type"]
-    want = str(cfg.get("device") or "auto").lower()
-    if want == "cpu":
-        device, ctype = "cpu", "int8"
-        print("[rawi] device: cpu (from config)", flush=True)
-    elif want == "auto" and not cuda_available():
-        device, ctype = "cpu", "int8"
-        print("[rawi] no CUDA device here -> CPU int8", flush=True)
-    else:
-        holder = gpu_gate()
-        if holder and gate_requires_yield(holder):
-            device, ctype = "cpu", "int8"
-            print(f"[rawi] GPU busy with {holder.get('owner')} ({holder.get('purpose')}) -> CPU int8", flush=True)
-    print(f"[rawi] loading {cfg['model']} ({ctype} on {device}) ...", flush=True)
-    t0 = time.time()
-    from faster_whisper import WhisperModel
-    try:
-        model = WhisperModel(cfg["model"], device=device, compute_type=ctype)
-    except Exception as e:
-        print(f"[rawi] load failed ({type(e).__name__}: {e})", flush=True)
-        if device == "cuda":
+    # Apple silicon: Whisper on the GPU through MLX when it is installed (rawi_mlx.py), about
+    # 6x faster than CTranslate2 on the CPU. "engine": "ctranslate2" keeps the old path.
+    model, t0 = None, time.time()
+    engine = str(cfg.get("engine") or "auto").lower()
+    if engine == "mlx" or (engine == "auto" and IS_MAC):
+        import rawi_mlx
+        if rawi_mlx.available():
+            print(f"[rawi] loading {cfg['model']} (MLX on the Apple GPU) ...", flush=True)
             try:
-                model = WhisperModel(cfg["model"], device="cuda", compute_type="int8_float16")
-            except Exception as e2:
-                print(f"[rawi] cuda int8_float16 failed ({type(e2).__name__}: {e2}) -> CPU int8", flush=True)
-                model = WhisperModel(cfg["model"], device="cpu", compute_type="int8")
+                model = rawi_mlx.MlxWhisper(cfg["model"])
+            except Exception as e:
+                print(f"[rawi] MLX load failed ({type(e).__name__}: {e}) -> CTranslate2", flush=True)
+        elif engine == "mlx":
+            print("[rawi] engine mlx asked for, but mlx-whisper is not installed -> CTranslate2", flush=True)
+    if model is None:
+        device, ctype = "cuda", cfg["compute_type"]
+        want = str(cfg.get("device") or "auto").lower()
+        if want == "cpu":
+            device, ctype = "cpu", "int8"
+            print("[rawi] device: cpu (from config)", flush=True)
+        elif want == "auto" and not cuda_available():
+            device, ctype = "cpu", "int8"
+            print("[rawi] no CUDA device here -> CPU int8", flush=True)
         else:
-            raise
+            holder = gpu_gate()
+            if holder and gate_requires_yield(holder):
+                device, ctype = "cpu", "int8"
+                print(f"[rawi] GPU busy with {holder.get('owner')} ({holder.get('purpose')}) -> CPU int8", flush=True)
+        print(f"[rawi] loading {cfg['model']} ({ctype} on {device}) ...", flush=True)
+        t0 = time.time()
+        from faster_whisper import WhisperModel
+        try:
+            model = WhisperModel(cfg["model"], device=device, compute_type=ctype)
+        except Exception as e:
+            print(f"[rawi] load failed ({type(e).__name__}: {e})", flush=True)
+            if device == "cuda":
+                try:
+                    model = WhisperModel(cfg["model"], device="cuda", compute_type="int8_float16")
+                except Exception as e2:
+                    print(f"[rawi] cuda int8_float16 failed ({type(e2).__name__}: {e2}) -> CPU int8", flush=True)
+                    model = WhisperModel(cfg["model"], device="cpu", compute_type="int8")
+            else:
+                raise
     print(f"[rawi] model ready in {time.time()-t0:.1f}s", flush=True)
 
     d = Rawi(cfg)
@@ -1461,6 +1781,20 @@ def main() -> int:
         target = MAC_LEFT.get(target, target)    # "ctrl" and "ctrl_l" are one key there
     mode = cfg["mode"]
     print(f"[rawi] key={target} mode={mode} lang={cfg['language']} paste={cfg['paste']}", flush=True)
+    caps = []
+    for m in ("hold", "toggle", "latch"):
+        secs = max_seconds_for(cfg, m)
+        caps.append(m + "=" + ("off" if not secs else "%gs" % secs))
+    caps = ", ".join(caps)
+    print(f"[rawi] max_seconds: {caps} (0 = off)", flush=True)
+    old_cap = legacy_max_seconds(cfg)
+    if old_cap is not None:
+        # a bare number used to mean "cap toggle and latch". The default changed on 2026-11-01, so
+        # obeying it now would cut his holds at three minutes. Say it out loud instead of guessing.
+        print("[rawi] max_seconds is a bare %g in your config.json: that form is from an older "
+              "version and is ignored. The cap is now hold %gs, toggle and latch off. Write "
+              '{"hold": 0} to turn the hold ceiling off.' % (old_cap, CAP_DEFAULTS["hold"]),
+              flush=True)
 
     if Wave is not None:
         try:
@@ -1475,9 +1809,8 @@ def main() -> int:
     if os.environ.get("RAWI_NO_DOCK") != "1":
         d.dock = start_dock()
 
-    import sounddevice as sd
-    d.stream = sd.InputStream(samplerate=SR, channels=1, dtype="float32", callback=d._cb, blocksize=0)
-    d.stream.start()
+    d.mic_open()
+    threading.Thread(target=d._mic_closer, daemon=True).start()
 
     from pynput import keyboard
     import time as _time
@@ -1562,20 +1895,23 @@ def main() -> int:
             return
         if state["down"]:
             return
+        threading.Thread(target=d.mic_open, daemon=True).start()   # ready before HOLD ends
         state["down"] = True
+        d.key_down = True
         state["press_at"] = _time.time()
         state["combo"] = False
 
         if state["latched"]:          # a single tap ends a latched recording
             state["latched"] = False
-            d.stop_and_process()
-            return
-
-        if mode == "toggle":
             if d.recording:
-                d.stop_and_process()
-            else:
-                d.start_rec()
+                d.stop_and_process("tap")
+                return
+            # The cap already ended it, so this press is a fresh hold, not a stop: a latched
+            # recording cut at its cap must not eat the hold that follows.
+            print("[rawi] the cap ended the latched recording; this press starts fresh", flush=True)
+
+        if mode in ("toggle", "latch"):
+            d.toggle_rec()
             return
 
         # hold mode: wait to see whether this is Ctrl alone or the start of a shortcut
@@ -1590,6 +1926,7 @@ def main() -> int:
         if name != target or not state["down"]:
             return
         state["down"] = False
+        d.key_down = False
         held = _time.time() - state["press_at"]
         was_pending = state["pending"]
         _cancel_pending()
@@ -1599,20 +1936,20 @@ def main() -> int:
         if state["combo"] and not d.recording:
             return                    # a shortcut: nothing happened, nothing to undo
         if d.recording and not was_pending:
-            d.stop_and_process()      # a latched tap ends here
+            d.stop_and_process("tap")     # a latched tap ends here
             return
         if held < TAP and not d.recording:
             now = _time.time()
             if now - state["tap_at"] < DOUBLE:
                 state["tap_at"] = 0.0
                 state["latched"] = True
-                d.start_rec()
+                d.start_rec(latched=True)
                 beep(880, 45, cfg["beeps"]); _time.sleep(0.09); beep(1100, 45, cfg["beeps"])
             else:
                 state["tap_at"] = now
             return
         if d.recording:
-            d.stop_and_process()
+            d.stop_and_process("release")
 
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         print("[rawi] listening. Ctrl+C here to quit.", flush=True)

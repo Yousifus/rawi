@@ -123,9 +123,12 @@ Arabic needs Piper: set `"engine": "piper"` in `voice.json`. `piper-tts` is **GP
 It is optional and never installed by default, so a packager can ship rawi's MIT source without it
 and should not bundle the package in. The only Arabic voice Piper publishes is `ar_JO-kareem`
 (this build uses `ar_JO-kareem-medium`). Its dataset has no stated licence, and the voice was
-fine-tuned from `en_US-lessac-medium`. The English default is `en_US-libritts_r-medium`,
-**CC BY 4.0**. The old default, `en_US-ryan-high`, is CC BY-NC-SA 4.0 (non-commercial) and is not
-selected on its own.
+fine-tuned from `en_US-lessac-medium`. The English default is `en_US-libritts_r-medium`. Its own
+dataset (LibriTTS-R) is **CC BY 4.0**, but its model card says it too was fine-tuned from
+`en_US-lessac-medium`, and the Lessac dataset's licence does not allow commercial voice synthesis.
+So check both voices before shipping voice mode in a commercial product. The one English Piper
+voice trained from scratch on public-domain data is `en_GB-cori-high` (British). The old default,
+`en_US-ryan-high`, is CC BY-NC-SA 4.0 (non-commercial) and is not selected on its own.
 
 ## Configuration
 
@@ -139,10 +142,13 @@ Every key is optional; the table below covers the ones worth knowing.
 | `model` | `large-v3-turbo` | any `faster-whisper` size, or a path to a local CTranslate2 model |
 | `compute_type` | `float16` | `float16` on GPU, `int8` on CPU |
 | `language` | `auto` | `auto`, `ar`, `en`, … |
+| `languages` | `["ar", "en"]` | the languages you actually speak. The probe weighs only these, so a short line is a choice between two rather than between a hundred; a language outside this list is never forced (with nothing of yours above the floor and no hint, Whisper decides freely), and a single string is accepted. The Arabic and English prompts, and the romanised second look, are tuned for this pair |
 | `paste` | `true` | paste at the cursor instead of only copying |
 | `restore_clipboard` | `true` | put your old clipboard back after pasting |
 | `log` | `false` | keep a transcript history (`transcripts.jsonl`) |
-| `min_seconds` / `max_seconds` | `0.25` / `180` | ignore taps / cap a runaway recording |
+| `min_seconds` | `0.25` | ignore taps shorter than this |
+| `max_seconds` | `{hold: 300, toggle: 0, latch: 0}` | the longest one recording may run, per mode. The default is a ceiling on a hold, because a hold whose key-up is missed behaves exactly like a latched recording, and no cap on toggle or latch, because those are started on purpose for long dictation. `0` = no cap, and any mode can take its own number. When a cap is reached rawi transcribes what it has, says why it stopped (`cap 300s` in the log), and if a key is still down at that moment it is not pasted (the text goes to the clipboard and the pill says so), because injecting Ctrl+V under a held Ctrl drops your modifier state A bare number is the old form and is ignored with one line at startup |
+| `repeat_collapse` | `{min_repeats: 8}` | collapse a word or phrase repeated this many times (Whisper loops); dhikr and laughter are exempt at any count. `keep` **adds** to that list, it never replaces it, so adding one phrase cannot switch off another. A single word chanted alone (e.g. «الله» nine times) looks exactly like a loop, so it collapses unless you add it: `{keep: ["الله"]}`. The other side of the same rule: a loop of a five-word sentence is never collapsed either, because the unit it looks for is at most four words |
 | `listen` | `{key: "f8", silence_ms: 700, …}` | the always-on ear and its thresholds |
 
 ## Platforms
