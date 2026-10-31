@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""voice_out.py — a resident local TTS server. Kokoro loaded once, spoken on demand.
+"""voice_out.py — a resident local TTS server. Kokoro (or Piper) loaded once, spoken on demand.
+
+Engine from voice.json: "engine": "kokoro" (default, English only) or "piper" (Arabic + English:
+`pip install piper-tts`; "voice_ar" / "voice_en" pick voices, defaults Kareem and Ryan).
 
 Why this exists: loading a TTS model per call costs tens of seconds. A conversation cannot survive
 that. This keeps the pipeline warm and turns a line into sound in about a second.
@@ -65,8 +68,110 @@ def pick_device():
     return None
 
 
+PIPER_VOICES = {"ar": "ar_JO-kareem-medium", "en": "en_US-ryan-high"}
+
+
+def _voice_cfg() -> dict:
+    try:
+        with open(CFG, encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def warm_piper(cfg: dict):
+    """Piper: small local voices with Arabic (Kokoro has none). One voice per script, so a
+    line that mixes Arabic and English is read by both, each in its own language."""
+    global _pipe, SR
+    from huggingface_hub import hf_hub_download
+    from piper import PiperVoice
+    t0 = time.time()
+    _pipe = {}
+    for lang, default in PIPER_VOICES.items():
+        name = cfg.get(f"voice_{lang}") or default                 # e.g. en_US-ryan-high
+        if name.startswith("apple:"):                              # e.g. apple:Majed
+            best = apple_voice(name[6:])
+            if best:
+                _pipe[lang] = best
+                continue
+            print(f"[voice] no Premium/Enhanced Apple voice {name[6:]!r} installed "
+                  f"(System Settings > Accessibility > Spoken Content) -> {default}", flush=True)
+            name = default
+        loc, _, quality = name.split("-")
+        path = f"{loc.split('_')[0]}/{loc}/{name.split('-')[1]}/{quality}/{name}"
+        onnx = hf_hub_download("rhasspy/piper-voices", path + ".onnx")
+        hf_hub_download("rhasspy/piper-voices", path + ".onnx.json")
+        _pipe[lang] = PiperVoice.load(onnx)
+    SR = next((v.config.sample_rate for v in _pipe.values() if not isinstance(v, str)), 22050)
+    _rate["device"], _rate["load_s"] = "cpu (piper)", round(time.time() - t0, 1)
+    _rate["voice"] = "/".join(v if isinstance(v, str) else "piper" for v in _pipe.values())
+    _ready.set()
+    print(f"[voice] ready in {time.time()-t0:.1f}s: " + ", ".join(
+        f"{k}={v if isinstance(v, str) else 'piper:' + (cfg.get(f'voice_{k}') or PIPER_VOICES[k])}"
+        for k, v in _pipe.items()), flush=True)
+
+
+def apple_voice(base: str):
+    """The best installed macOS voice called `base`: Premium, then Enhanced. Never the compact
+    one: that is the robotic voice this option exists to replace."""
+    import subprocess
+    have = subprocess.run(["say", "-v", "?"], capture_output=True, text=True).stdout
+    for tier in ("Premium", "Enhanced"):
+        if f"{base} ({tier})" in have:
+            return f"{base} ({tier})"
+    return None
+
+
+def synth_apple(voice: str, text: str):
+    """macOS `say` straight to a float WAV at the engine's rate, then read back for playback."""
+    import subprocess
+    import tempfile
+    import soundfile as sf
+    with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+        subprocess.run(["say", "-v", voice, "-o", f.name, "--file-format=WAVE",
+                        f"--data-format=LEF32@{SR}", text], check=True)
+        audio, _ = sf.read(f.name, dtype="float32")
+    return audio if audio.ndim == 1 else audio.mean(axis=1)
+
+
+def _runs(text: str):
+    """Split a line into same-script runs: [("ar", "يا هلا"), ("en", "Yousef"), ...].
+    Digits and punctuation stay with the run they sit in."""
+    runs = []
+    for word in text.split():
+        # letters decide, not punctuation: "Yousef،" (Arabic comma) is still English
+        lang = ("ar" if re.search(r"[ء-غف-يٱ-ۓ]", word) else
+                "en" if re.search(r"[A-Za-z]", word) else (runs[-1][0] if runs else "en"))
+        if runs and runs[-1][0] == lang:
+            runs[-1][1].append(word)
+        else:
+            runs.append((lang, [word]))
+    return [(lang, " ".join(words)) for lang, words in runs]
+
+
+def synth_piper(text: str):
+    gap = np.zeros(int(SR * 0.12), dtype=np.float32)     # a breath between language switches
+    chunks = []
+    for lang, run in _runs(text):
+        voice = _pipe[lang]
+        if isinstance(voice, str):                                  # an Apple voice by name
+            audio = [synth_apple(voice, run)]
+        else:
+            audio = [c.audio_int16_array.astype(np.float32) / 32768.0 for c in voice.synthesize(run)]
+        if audio:
+            chunks += audio + [gap]
+    return np.concatenate(chunks) if chunks else None
+
+
 def warm():
     global _pipe
+    cfg = _voice_cfg()
+    if str(cfg.get("engine") or "kokoro").lower() == "piper":
+        try:
+            warm_piper(cfg)
+        except Exception as e:
+            print(f"[voice] piper FAILED {type(e).__name__}: {e}", flush=True)
+        return
     t0 = time.time()
     try:
         from kokoro import KPipeline
@@ -121,6 +226,8 @@ def _split(text: str, n: int = CHUNK_CHARS):
 
 
 def synth(text: str):
+    if isinstance(_pipe, dict):                       # piper: one voice per language
+        return synth_piper(text)
     chunks = []
     for piece in _split(text):
         chunks += [r.audio.numpy() for r in _pipe(piece, voice=VOICE)]
@@ -177,7 +284,7 @@ class H(BaseHTTPRequestHandler):
                 free_gb = round(psutil.virtual_memory().available / 1073741824, 1)
             except Exception:
                 free_gb = None
-            return self._json(200, {"ok": True, "ready": _ready.is_set(), "voice": VOICE,
+            return self._json(200, {"ok": True, "ready": _ready.is_set(), "voice": _rate.get("voice") or VOICE,
                                     "device": _rate["device"], "load_s": _rate["load_s"],
                                     "idle_s": round(time.time() - _last_use[0], 1) if _last_use[0] else None,
                                     "free_gb": free_gb})
