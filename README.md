@@ -143,7 +143,7 @@ Every key is optional; the table below covers the ones worth knowing.
 | hub window | ✅ (+ tray) | ✅ (no tray) | untested |
 | beep | `winsound` | `afplay` | terminal bell |
 
-The macOS port was made to work by Abdulrahman, who ran rawi on his Mac on 31 Oct 2026 and sent the fixes:
+The macOS port was made to work by [Abdulrahman Aldosari](https://abdulrahmankhalid.com/), who ran rawi on his Mac on 31 Oct 2026 and sent the fixes:
 the pill runs on the main thread there, left Ctrl is recognised under its macOS name, the hub's
 Windows-only calls have macOS versions, and the dock is replaced by a menu bar item. On a Mac the
 double-tap latch, F8, F9 and F10 have not been tried yet. Linux paths exist but are untested.
@@ -210,7 +210,8 @@ ARCHITECTURE.md    how a sentence travels from your mouth to the cursor
 ## Credits
 
 Built by [Yousifus](https://github.com/Yousifus), for daily use in Arabic and English. The macOS port,
-including the menu bar icon, is Abdulrahman's.
+including the menu bar icon, is by [Abdulrahman Aldosari](https://abdulrahmankhalid.com/)
+([@liling-png](https://github.com/liling-png)).
 Stands on `faster-whisper`, `ctranslate2`, `sounddevice`, `pynput`, `pywebview` and, for voice mode,
 `kokoro`. Whisper is OpenAI's model, MIT licensed.
 
