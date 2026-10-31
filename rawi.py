@@ -118,6 +118,7 @@ DEFAULTS = {
     "language": "auto",
     "paste": True,
     "restore_clipboard": True,
+    "restore_delay": 1.5,     # macOS: seconds before the old clipboard returns (a busy app pastes late)
     "beeps": True,
     "log": False,
     "max_seconds": 180,
@@ -966,6 +967,8 @@ class Rawi:
         return {"ok": True, "raw": L["raw"]}
 
     def paste(self, text: str):
+        if IS_MAC:
+            return self._paste_mac(text)
         import pyperclip
         import pyautogui
         old = None
@@ -988,6 +991,54 @@ class Rawi:
                 pyperclip.copy(old)
             except Exception:
                 pass
+
+
+    def _paste_mac(self, text: str):
+        """The pasteboard directly, every type of every item. pyperclip sees only text: with a
+        screenshot on the clipboard it saved "" and put "" back, wiping the image, and if a busy
+        app (Claude, mid-answer) read its Cmd+V after that, it pasted nothing at all."""
+        from AppKit import NSPasteboard, NSPasteboardTypeString
+        pb = NSPasteboard.generalPasteboard()
+        saved = None
+        if self.cfg["restore_clipboard"]:
+            saved = [[(t, item.dataForType_(t)) for t in item.types()]
+                     for item in (pb.pasteboardItems() or [])]
+        pb.clearContents()
+        pb.setString_forType_(text, NSPasteboardTypeString)
+        ours = pb.changeCount()
+        time.sleep(0.05)
+        self.injecting = True
+        try:
+            chord("v")
+        finally:
+            time.sleep(0.12)
+            self.injecting = False
+        if saved is not None:
+            delay = float(self.cfg.get("restore_delay") or 1.5)
+            threading.Thread(target=_restore_pasteboard, args=(saved, ours, delay), daemon=True).start()
+
+
+def _restore_pasteboard(saved, ours: int, delay: float) -> None:
+    """Put the old clipboard back once a slow app has surely read the paste, and only if the
+    clipboard still holds our line: if he copied something since, that wins."""
+    time.sleep(delay)
+    try:
+        from AppKit import NSPasteboard, NSPasteboardItem
+        pb = NSPasteboard.generalPasteboard()
+        if pb.changeCount() != ours:
+            return
+        items = []
+        for types in saved:
+            item = NSPasteboardItem.alloc().init()
+            for t, data in types:
+                if data is not None:
+                    item.setData_forType_(data, t)
+            items.append(item)
+        pb.clearContents()
+        if items:
+            pb.writeObjects_(items)
+    except Exception as e:
+        print(f"[rawi] clipboard restore failed ({type(e).__name__}: {e})", flush=True)
 
 
 MAC_KEYCODES = {"v": 9, "z": 6}      # kVK_ANSI_V, kVK_ANSI_Z: physical keys, so any layout works
