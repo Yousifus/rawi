@@ -1254,7 +1254,7 @@ def doctor(cfg: dict, deep: bool = False) -> int:
             bad(f"{m} missing ({type(e).__name__}) \u2014 pip install -r requirements.txt")
     # the paste path: without these, a dictation is transcribed and then silently lost
     if str(cfg.get("paste", True)).lower() != "false":
-        for m in ("pyautogui", "pygetwindow"):
+        for m in ("pyautogui", "pygetwindow") if IS_WIN else ("pyautogui",):   # pygetwindow names the window on Windows only
             try:
                 __import__(m); ok(m)
             except Exception:
