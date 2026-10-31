@@ -42,8 +42,9 @@ is no account, and no service decides when you may speak.
 
 ## Requirements
 
-- **Windows 10/11** — the tested path. **macOS** and X11 Linux have code paths (see *Platforms*) but no
-  maintainer running them daily.
+- **Windows 10/11**, used daily by the maintainer, or **macOS** on Apple silicon, tested end to end on an
+  M1 Pro with macOS 15.1 (see *On a Mac* below). X11 Linux has code paths (see *Platforms*) that nobody
+  has run yet.
 - Python 3.10 – 3.12.
 - An NVIDIA GPU is optional but strongly recommended: `large-v3-turbo` transcribes a sentence in
   well under a second on a modern GPU. On CPU use `small` or `base` with `compute_type: int8`.
@@ -74,6 +75,31 @@ python rawi.py
 
 The first run downloads the Whisper weights (about 1.5 GB for `large-v3-turbo`) from Hugging Face into
 your local cache. After that, no network is needed at all.
+
+### On a Mac
+
+Tested on a MacBook Pro (M1 Pro, macOS 15.1, Python 3.12). The step-by-step checklist is
+[docs/MACOS-TESTING.md](docs/MACOS-TESTING.md).
+
+1. In System Settings, Privacy and Security, give **Accessibility** and **Microphone** to the app you run
+   rawi from (Terminal or iTerm). Without Accessibility the line is transcribed but never pasted, and
+   nothing warns you.
+2. Use Python 3.10 to 3.12. The `python3` that ships with macOS is 3.9, which is too old.
+
+```bash
+git clone https://github.com/Yousifus/rawi.git && cd rawi
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp config.example.json config.json      # then set "model": "small", "compute_type": "int8"
+python rawi.py --doctor                 # "no CUDA device" is expected on a Mac
+python rawi.py
+```
+
+On the M1 Pro, `small` took about 2.5 to 3.5 seconds a line in Arabic and English. `large-v3-turbo` took
+about 10 seconds a line, with clearly better Arabic, especially in dialect. On macOS rawi shows a **menu
+bar icon** instead of the dock: a mic when ready, a filled mic while recording, an ear when always
+listening is on, and a crossed-out mic when it is not running. Its menu starts and stops dictation,
+opens the hub, and quits everything. On a Mac keyboard the F keys may need `fn`.
 
 ## Keys
 
@@ -109,16 +135,18 @@ Every key is optional; the table below covers the ones worth knowing.
 
 | | Windows | macOS | Linux (X11) |
 |---|---|---|---|
-| record, transcribe, dictionary, ear | ✅ | ✅ expected | ✅ expected |
+| record, transcribe, dictionary | ✅ | ✅ tested (M1 Pro) | ✅ expected |
 | paste | `Ctrl+V` | `⌘V` + **Accessibility permission** | `Ctrl+V`, needs `xdotool` |
 | focused-app name (for per-app profiles) | `pygetwindow` | `osascript` | `xdotool` |
-| pill / dock / hub | ✅ | pywebview + tkinter, **untested** | untested |
+| pill | ✅ | ✅ floating, never takes focus | untested |
+| dock / menu bar | dock ✅ | menu bar icon ✅ | untested |
+| hub window | ✅ (+ tray) | ✅ (no tray) | untested |
 | beep | `winsound` | `afplay` | terminal bell |
 
-macOS and Linux paths are implemented and deliberately small — three functions at the top of `rawi.py`
-(`beep`, `active_app`, the paste chord). **They have not been validated on real hardware by the
-maintainer.** If you run macOS, the first thing to grant is Accessibility to whichever process owns the
-keyboard listener, or the paste will silently do nothing.
+The macOS port was made to work by Abdulrahman, who ran rawi on his Mac on 31 Oct 2026 and sent the fixes:
+the pill runs on the main thread there, left Ctrl is recognised under its macOS name, the hub's
+Windows-only calls have macOS versions, and the dock is replaced by a menu bar item. On a Mac the
+double-tap latch, F8, F9 and F10 have not been tried yet. Linux paths exist but are untested.
 
 
 ### On a machine without an NVIDIA GPU
@@ -159,7 +187,8 @@ every change.
 ```
 rawi.py            the daemon: hotkeys, recording, transcription, paste, the ear, IPC
 rawi_app.py        the hub window (pywebview) + tray icon
-rawi_dock.py       the small dock
+rawi_dock.py       the small dock (Windows)
+rawi_menubar.py    the menu bar icon (macOS), in place of the dock
 wave_overlay.py    the pill
 rawi_mood.py       a one-word mood tag for the history
 stats.py           local usage statistics
@@ -173,14 +202,15 @@ ARCHITECTURE.md    how a sentence travels from your mouth to the cursor
 
 ## Roadmap
 
-- [x] macOS / Linux paste paths (implemented; **macOS verification pending**)
+- [x] macOS: tested end to end on Apple silicon, with a menu bar icon (Linux paths implemented, untested)
 - [ ] Streaming transcription (words appear while you speak)
 - [ ] A benchmark script so people can compare models on their own hardware
 - [ ] Package as a single executable (`pyinstaller`)
 
 ## Credits
 
-Built by [Yousifus](https://github.com/Yousifus), for daily use in Arabic and English.
+Built by [Yousifus](https://github.com/Yousifus), for daily use in Arabic and English. The macOS port,
+including the menu bar icon, is Abdulrahman's.
 Stands on `faster-whisper`, `ctranslate2`, `sounddevice`, `pynput`, `pywebview` and, for voice mode,
 `kokoro`. Whisper is OpenAI's model, MIT licensed.
 

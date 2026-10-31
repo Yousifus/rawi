@@ -179,6 +179,7 @@ figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; }
 
 /* install */
 .need { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; padding: 0; list-style: none; }
+.macnote { background: var(--paper-2); border-radius: 12px; padding: 12px 16px; margin: -12px 0 22px; font-size: 15px; color: var(--ink); }
 .need li { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-size: 14.5px; }
 ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; display: grid; gap: 14px; }
 ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 40px 1fr; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
@@ -235,7 +236,7 @@ footer .row { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: s
 <main>
 <div class="hero">
   <div>
-    <p class="eyebrow"><span class="en">Dictation for Windows · Arabic and English</span><span class="ar" lang="ar">إملاء صوتي لويندوز · عربي وإنجليزي</span></p>
+    <p class="eyebrow"><span class="en">Dictation for Windows and Mac · Arabic and English</span><span class="ar" lang="ar">إملاء صوتي لويندوز وماك · عربي وإنجليزي</span></p>
     <h1 class="en">Hold the key. <em>Speak.</em> It's already written.</h1>
     <h1 class="ar" lang="ar">اضغط وتكلّم، <em>وكلامك يصير كتابة.</em></h1>
     <p class="lede en">rawi (راوي, the narrator) types what you say into whatever app you're in: WhatsApp, Word, Slack, your browser. Arabic, English, or both in the same sentence. It runs entirely on your own computer, so it's free, there's no account, and your voice never leaves your machine.</p>
@@ -244,7 +245,7 @@ footer .row { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: s
       <a class="btn primary" href="#install"><span class="en">Get it</span><span class="ar" lang="ar">حمّله</span></a>
       <a class="btn ghost" href="#limits"><span class="en">What to expect</span><span class="ar" lang="ar">وش تتوقع منه</span></a>
     </div>
-    <p class="fine"><span class="en">Free and open source (MIT) · Windows 10 and 11 · Needs Python</span><span class="ar" lang="ar">مجاني ومفتوح المصدر (MIT) · ويندوز 10 و 11 · يحتاج بايثون</span></p>
+    <p class="fine"><span class="en">Free and open source (MIT) · Windows or Mac · Needs Python</span><span class="ar" lang="ar">مجاني ومفتوح المصدر (MIT) · ويندوز أو ماك · يحتاج بايثون</span></p>
   </div>
 
   <div class="demo" id="demo" aria-label="Animated illustration of rawi">
@@ -310,8 +311,8 @@ footer .row { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: s
       <figcaption><span class="en">Usage: how much you said today, and where it went.</span><span class="ar" lang="ar">الاستخدام: كم تكلمت اليوم، ووين انكتب.</span></figcaption>
     </figure>
     <figure>
-      <img src="img/hub-room.png" width="1080" height="780" loading="lazy" alt="The rawi hub on the Room page: each dictation today drawn as a star.">
-      <figcaption><span class="en">The Room: every line you said today is a star.</span><span class="ar" lang="ar">الغرفة: كل جملة قلتها اليوم نجمة.</span></figcaption>
+      <img src="img/hub-room.png" width="1080" height="780" loading="lazy" alt="The rawi hub showing each dictation drawn as a star.">
+      <figcaption><span class="en">Sky: every line you have said is a star.</span><span class="ar" lang="ar">السماء: كل جملة قلتها نجمة.</span></figcaption>
     </figure>
   </div>
 </section>
@@ -320,12 +321,13 @@ footer .row { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: s
   <h2><span class="en">Get it running</span><span class="ar" lang="ar">شغّله على جهازك</span></h2>
   <p class="sub"><span class="en">There's no installer yet, so this takes about ten minutes and a terminal. Each step is copy and paste.</span><span class="ar" lang="ar">ما فيه مثبّت جاهز للحين، فتحتاج تقريبًا عشر دقايق وشاشة الأوامر (Terminal). كل خطوة نسخ ولصق.</span></p>
   <ul class="need">
-    <li><span class="en">Windows 10 or 11</span><span class="ar" lang="ar">ويندوز 10 أو 11</span></li>
+    <li><span class="en">Windows 10 or 11, or a Mac</span><span class="ar" lang="ar">ويندوز 10 أو 11، أو ماك</span></li>
     <li><span class="en">Python 3.10 to 3.12</span><span class="ar" lang="ar">بايثون من 3.10 إلى 3.12</span></li>
     <li><span class="en">A microphone</span><span class="ar" lang="ar">مايك</span></li>
     <li><span class="en">0.5 GB free for the small model, about 1.5 GB for the large one</span><span class="ar" lang="ar">نص جيجا للنموذج الصغير، وحوالي 1.5 جيجا للكبير</span></li>
     <li><span class="en">NVIDIA GPU: optional, much faster</span><span class="ar" lang="ar">كرت NVIDIA: اختياري، بس أسرع بكثير</span></li>
   </ul>
+  <p class="macnote"><span class="en"><b>On a Mac?</b> The steps below are for Windows. On a Mac, give Terminal Accessibility and Microphone access first, then follow <a href="https://github.com/Yousifus/rawi#on-a-mac">the Mac steps in the README</a>.</span><span class="ar" lang="ar"><b>عندك ماك؟</b> الخطوات تحت لويندوز. على الماك، أعطِ الـ Terminal صلاحية Accessibility والمايك أول، وبعدين اتبع <a href="https://github.com/Yousifus/rawi#on-a-mac">خطوات الماك في الـ README</a>.</span></p>
   <ol class="steps">
     <li><div>
       <h3><span class="en">Install Python</span><span class="ar" lang="ar">ثبّت بايثون</span></h3>
@@ -377,8 +379,8 @@ python rawi.py</pre></div>
   <div class="limits">
     <div class="limit">
       <h3><span class="en">Slow without a GPU</span><span class="ar" lang="ar">بطيء بدون كرت شاشة</span></h3>
-      <p class="en">On a laptop CPU, expect 8 to 11 seconds per line, and about 23 seconds for the first one while the model warms up. Nothing gets lost while you wait: lines queue up and come out in order.</p>
-      <p class="ar" lang="ar">على معالج لابتوب، توقّع من 8 إلى 11 ثانية للجملة، وحوالي 23 ثانية لأول جملة لين يسخن النموذج. وما يضيع شي وأنت تنتظر: الجمل تصف بالدور وتنكتب بالترتيب.</p>
+      <p class="en">On a laptop CPU, expect 8 to 11 seconds per line, and about 23 seconds for the first one while the model warms up. An Apple silicon Mac is much quicker: about 2.5 to 3.5 seconds a line. Nothing gets lost while you wait: lines queue up and come out in order.</p>
+      <p class="ar" lang="ar">على معالج لابتوب، توقّع من 8 إلى 11 ثانية للجملة، وحوالي 23 ثانية لأول جملة لين يسخن النموذج. الماك بمعالجات Apple أسرع بكثير: من 2.5 إلى 3.5 ثانية للجملة. وما يضيع شي وأنت تنتظر: الجمل تصف بالدور وتنكتب بالترتيب.</p>
     </div>
     <div class="limit">
       <h3><span class="en">Arabic needs the big model</span><span class="ar" lang="ar">العربي يبي النموذج الكبير</span></h3>
@@ -386,9 +388,9 @@ python rawi.py</pre></div>
       <p class="ar" lang="ar">على النموذج الصغير، الإنجليزي ممتاز والعربي ضعيف. العربي يتحسن كثير على النموذج الكبير، وهذا يبي كرت NVIDIA.</p>
     </div>
     <div class="limit">
-      <h3><span class="en">Windows only, for now</span><span class="ar" lang="ar">ويندوز بس، حاليًا</span></h3>
-      <p class="en">There's code for Mac and Linux, but nobody has run it there day to day yet. If you try it on a Mac, tell me how it goes.</p>
-      <p class="ar" lang="ar">فيه كود للماك ولينكس، بس محد جرّبه عليهم يوميًا للحين. إذا جربته على ماك، قولي وش صار.</p>
+      <h3><span class="en">Windows and Mac. Not Linux yet</span><span class="ar" lang="ar">ويندوز وماك. لينكس لا، للحين</span></h3>
+      <p class="en">My friend Abdulrahman got it running on his Mac (an M1 Pro) and sent back the fixes, including a menu bar icon. A few keys are still untried there, and Linux code exists but nobody has run it.</p>
+      <p class="ar" lang="ar">صديقي عبدالرحمن شغّله على الماك حقه (M1 Pro) ورجّع لي التعديلات، ومعها أيقونة في شريط القوائم. باقي كم مفتاح ما تجرّب هناك، ولينكس فيه كود بس محد شغّله.</p>
     </div>
     <div class="limit">
       <h3><span class="en">Not packaged, not benchmarked</span><span class="ar" lang="ar">بدون مثبّت، وبدون قياس دقيق</span></h3>
@@ -406,7 +408,7 @@ python rawi.py</pre></div>
 
 <footer>
   <div class="row">
-    <span><span class="en">Made by Yousef Awlaki, with Claude. MIT licensed. Built on faster-whisper and OpenAI's Whisper.</span><span class="ar" lang="ar">سوّاه يوسف العولقي مع Claude. رخصة MIT. مبني على faster-whisper ونموذج Whisper من OpenAI.</span></span>
+    <span><span class="en">Made by Yousef Awlaki, with Claude. The Mac version is Abdulrahman's. MIT licensed. Built on faster-whisper and OpenAI's Whisper.</span><span class="ar" lang="ar">سوّاه يوسف العولقي مع Claude، ونسخة الماك من عبدالرحمن. رخصة MIT. مبني على faster-whisper ونموذج Whisper من OpenAI.</span></span>
     <a href="https://github.com/Yousifus/rawi"><span class="en">Source on GitHub</span><span class="ar" lang="ar">الكود على GitHub</span></a>
   </div>
 </footer>
