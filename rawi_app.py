@@ -296,7 +296,7 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             w = sum(words(r.get("text")) for r in rs)
             return {"n": len(rs), "words": w, "wpm": round(wpm(rs), 1)}
 
-        tok_re = re.compile(r"[\w\u0600-\u06FF']+")
+        tok_re = re.compile(r"[\w\u064B-\u065F\u0670']+")    # letters and harakat; not \u060C \u061F \u061B which share U+06xx
         counts = {}
         for r in rows:
             for t in tok_re.findall((r.get("text") or "").lower()):
@@ -357,6 +357,79 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
         fast = max(paced, key=lambda x: x[0]) if paced else None
         slow = min(paced, key=lambda x: x[0]) if paced else None
 
+        # ---- insights: more counts over the same log, nothing estimated ----
+        def script(t):
+            a, e = bool(ar_re.search(t)), bool(en_re.search(t))
+            return "mixed" if a and e else ("ar" if a else ("en" if e else "other"))
+
+        weekdays = [0] * 7                                   # Sunday first
+        for r in rows:
+            weekdays[(r["_dt"].weekday() + 1) % 7] += 1
+
+        week_start = (now.date() - dt.timedelta(days=(now.weekday() + 1) % 7))
+        lang_weeks = []
+        for i in range(7, -1, -1):                           # the last 8 weeks, oldest first
+            ws = week_start - dt.timedelta(days=7 * i)
+            b = {"from": ws.strftime("%d %b"), "ar": 0, "en": 0, "mixed": 0}
+            for r in rows:
+                if ws <= r["_dt"].date() < ws + dt.timedelta(days=7):
+                    s = script(r.get("text") or "")
+                    if s in b:
+                        b[s] += 1
+            lang_weeks.append(b)
+
+        lens = {"ar": [], "en": [], "mixed": []}
+        for r in rows:
+            s = script(r.get("text") or "")
+            if s in lens:
+                lens[s].append(words(r.get("text")))
+        avg_len = {k: (round(sum(v) / len(v), 1) if v else 0) for k, v in lens.items()}
+
+        first_seen, total_tok = {}, 0
+        for r in sorted(rows, key=lambda r: r["_dt"]):
+            for t in tok_re.findall((r.get("text") or "").lower()):
+                total_tok += 1
+                if len(t) >= 3 and t not in self.STOP and not t.isdigit() and t not in first_seen:
+                    first_seen[t] = r["_dt"]
+        new_words = sorted((w for w, d in first_seen.items() if now - d < 7 * day),
+                           key=lambda w: -counts.get(w, 0))
+        vocab = {"unique": len(first_seen), "total": total_tok, "new_week": len(new_words),
+                 "new_examples": new_words[:10]}
+
+        apps = {}
+        for r in rows:
+            a = app_label(r.get("app"))
+            if a:
+                b = apps.setdefault(a, {"app": a, "ar": 0, "en": 0, "mixed": 0, "n": 0})
+                s = script(r.get("text") or "")
+                if s in b:
+                    b[s] += 1
+                b["n"] += 1
+        apps_lang = sorted(apps.values(), key=lambda b: -b["n"])[:6]
+
+        moods = {}
+        for r in rows:
+            m = (r.get("mood") or {})
+            if m.get("m"):
+                e = moods.setdefault(m["m"], {"m": m["m"], "e": m.get("e") or "", "n": 0})
+                e["n"] += 1
+        moods = sorted(moods.values(), key=lambda x: -x["n"])[:8]
+
+        days_on = sorted({r["_dt"].date() for r in rows})
+        longest = run = 0
+        for i, d in enumerate(days_on):
+            run = run + 1 if i and (d - days_on[i - 1]).days == 1 else 1
+            longest = max(longest, run)
+        per_day = Counter()
+        for r in rows:
+            per_day[r["_dt"].date()] += words(r.get("text"))
+        best_day = max(per_day.items(), key=lambda kv: kv[1]) if per_day else None
+        insights = {"weekdays": weekdays, "lang_weeks": lang_weeks, "avg_len": avg_len, "vocab": vocab,
+                    "apps_lang": apps_lang, "moods": moods, "active_days": len(days_on),
+                    "longest_run": longest,
+                    "best_day": ({"d": best_day[0].strftime("%a %d %b"), "words": best_day[1]}
+                                 if best_day else None)}
+
         return {"ok": True, "built": now.strftime("%H:%M:%S"),
                 "today": span(today), "week": span(week), "prev_week": span(prev),
                 "wpm_week": round(wpm(week), 1), "wpm_prev": round(wpm(prev), 1),
@@ -367,7 +440,7 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
                 "slowest": {"wpm": round(slow[0]) if slow else 0,
                             "line": (slow[1].get("text") or "")[:110] if slow else ""},
                 "first_day": rows[0]["_dt"].strftime("%d %b %Y") if rows else "",
-                "all": span(rows)}
+                "all": span(rows), "insights": insights}
 
     def listen(self, on=None):
         """Open or close the ear. on=None flips it."""
