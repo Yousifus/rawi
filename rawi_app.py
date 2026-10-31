@@ -23,6 +23,9 @@ NO_WINDOW = 0x08000000 if IS_WIN else 0                     # CREATE_NO_WINDOW
 # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP on Windows; a new session elsewhere
 DETACH = ({"creationflags": 0x00000008 | 0x00000200} if IS_WIN else {"start_new_session": True})
 CLEANER = "http://127.0.0.1:18080/health"
+# The caps rawi.py ships, mirrored here because this file does not import the daemon (it would pull
+# sounddevice into the hub). tests/test_hub_config.py compares the two, so they cannot drift apart.
+CAP_DEFAULTS = {"hold": 300.0, "toggle": 0.0, "latch": 0.0}
 
 
 import rawi_mood  # optional: one emoji per dictation, earned by words
@@ -602,8 +605,6 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             given = patch.get("max_seconds")
             current = c.get("max_seconds")
             cur_caps = current if isinstance(current, dict) else {}
-            plain = (current if isinstance(current, (int, float)) and not isinstance(current, bool)
-                     else None)
 
             def _cap(value, fallback):
                 """A cap is a finite number from 0 up. Anything else keeps what was already there:
@@ -621,13 +622,12 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
                 return fallback if number < 0 else number
 
             def _existing(key):
+                # an absent cap keeps the value rawi itself would use: a partial save from anywhere
+                # but this page must not turn the hold ceiling off or invent a 180 s toggle cap,
+                # and a plain number is the old format rawi ignores, so it lifts to nothing
                 if key in cur_caps:
-                    return _cap(cur_caps.get(key), 0.0 if key == "hold" else 180.0)
-                if plain is not None:
-                    # a plain number caps toggle and latch and leaves a hold alone, so that is
-                    # what lifting it into three boxes must preserve
-                    return 0.0 if key == "hold" else max(0.0, plain)
-                return 0.0 if key == "hold" else 180.0
+                    return _cap(cur_caps.get(key), CAP_DEFAULTS[key])
+                return CAP_DEFAULTS[key]
 
             if isinstance(given, dict):
                 c["max_seconds"] = {k: _cap(given[k], _existing(k)) if k in given else _existing(k)

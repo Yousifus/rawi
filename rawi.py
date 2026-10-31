@@ -119,8 +119,9 @@ DEFAULTS = {
     "restore_clipboard": True,
     "beeps": True,
     "log": False,
-    # 0 = no cap. A plain number caps only the modes that run away on their own (toggle, latch) and
-    # never a hold, because a hold ends when he lets go; an object gives each mode its own cap.
+    # 0 = no cap, and each mode has its own. A hold is capped at 5 minutes because a key-up that
+    # never arrives behaves exactly like a latch; a recording started on purpose is not capped. A
+    # plain number is the old format and is ignored (it would cut every hold to that number).
     "max_seconds": {"hold": 300, "toggle": 0, "latch": 0},
     # Whisper loops a phrase tens of times, people repeat on purpose five times. Eight is the line,
     # and the words in repeat_collapse.keep (dhikr, laughter) are never collapsed at any count.
@@ -431,7 +432,7 @@ class Ear:
                 if not self.on:
                     continue
                 self.done += 1
-                self.d._work(seg, len(seg) / float(SR), listen=True)
+                self.d._work(seg, len(seg) / float(SR), listen=True, reason="ear")
             except Exception as e:
                 print(f"[rawi] ear error {type(e).__name__}: {e}", flush=True)
 
@@ -717,6 +718,7 @@ class Rawi:
         self._capped = False            # the cap already fired for this recording
         self._cap_stopped = 0.0         # when it did, so the next key press is a stop, not a start
         self._cap_s = 0.0               # this recording's cap in seconds; 0 = none
+        self.key_down = False           # a key is physically held right now (set by the listener)
         self._cap_mode = str(self.cfg.get("mode") or "hold")
         self.started_at = 0.0
         self.busy = threading.Semaphore(1)
@@ -940,7 +942,7 @@ class Rawi:
             self.frames.append(indata.copy())
             # max_seconds was a setting nothing read: a latched recording ran 22 minutes and Whisper
             # filled the silence with stock lines. Stop it here (off the audio thread), at the cap
-            # this recording's own mode declares — and never at a cap a long hold never had.
+            # this recording's own mode declares. A mode with 0 is never cut.
             if (not self._capped and self._cap_s and
                     time.time() - self.started_at > self._cap_s):
                 self._capped = True
@@ -954,7 +956,9 @@ class Rawi:
                         pass
                 threading.Thread(
                     target=self.stop_and_process,
-                    args=(f"cap {self._cap_s:g}s", self._cap_mode != "hold"),
+                    # a key that is really down, not the mode: a recording the pill started in hold
+                    # mode has no Ctrl held, and used to be copied instead of pasted for nothing
+                    args=(f"cap {self._cap_s:g}s", not self.key_down),
                     daemon=True).start()
             if self.wave is not None:
                 try:
@@ -1006,7 +1010,7 @@ class Rawi:
 
     def stop_and_process(self, reason: str = "release", paste: bool = True):
         """Reason travels with the audio: history must be able to say why a line ended
-        (release, tap, cap 300s, stop). paste=False is for a cap that fires while his key is still
+        (release, tap, stop, ear, cap 300s). paste=False is for a cap that fires while a key is still
         held: the text goes to the clipboard and the pill says so, because injecting Ctrl+V while
         the physical Ctrl is down would drop his modifier state."""
         # The cap fires on the audio thread while a key release may arrive at the same moment;
@@ -1893,6 +1897,7 @@ def main() -> int:
             return
         threading.Thread(target=d.mic_open, daemon=True).start()   # ready before HOLD ends
         state["down"] = True
+        d.key_down = True
         state["press_at"] = _time.time()
         state["combo"] = False
 
@@ -1902,7 +1907,7 @@ def main() -> int:
                 d.stop_and_process("tap")
                 return
             # The cap already ended it, so this press is a fresh hold, not a stop: a latched
-            # recording cut at 180 s must not eat the hold that follows.
+            # recording cut at its cap must not eat the hold that follows.
             print("[rawi] the cap ended the latched recording; this press starts fresh", flush=True)
 
         if mode in ("toggle", "latch"):
@@ -1921,6 +1926,7 @@ def main() -> int:
         if name != target or not state["down"]:
             return
         state["down"] = False
+        d.key_down = False
         held = _time.time() - state["press_at"]
         was_pending = state["pending"]
         _cancel_pending()

@@ -560,7 +560,67 @@ class TestWhyALineEnded(unittest.TestCase):
         self.assertEqual(rows[0], "مرحبا")            # it is on the clipboard
         self.assertTrue(any("not pasted" in f for f in d.wave.flashed))
         self.assertEqual(d.last["stop"], "cap 300s")
-        self.assertIs(rows[-1]["stop"], "cap 300s")
+        self.assertEqual(rows[-1]["stop"], "cap 300s")
+
+
+class TestTheCapDecidesWhereTheWordsGo(unittest.TestCase):
+    """The line that decides copy-not-paste is exercised, not handed its answer.
+
+    Feeding `paste=False` in by hand proved that the copy branch works; it proved nothing about the
+    code that chooses it. These drive the audio callback, which is where the cap fires and where the
+    flag is decided, and they read the world after it: the pill, the clipboard, the history row.
+    """
+
+    def _d(self, key_down):
+        import collections
+        import threading
+        import time as _t2
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False, paste=True, log=True, dumb=True)
+        d.busy = threading.Semaphore(1)
+        d.pending = collections.deque()
+        d.injecting, d.ear, d.wave, d.last = False, None, _Pill(), None
+        d.recording, d._capped, d._cap_stopped = True, False, 0.0
+        d._cap_mode, d._cap_s, d.key_down = "hold", 300.0, key_down
+        d.started_at = _t2.time() - 301.0
+        d.frames = []
+        d._stop_lock = threading.Lock()
+        d.transcribe = lambda audio, lang, listen=False: ("\u0645\u0631\u062d\u0628\u0627", "ar", 1.0)
+        d.paste = lambda text: setattr(d, "pasted", text)
+        return d
+
+    def _fire(self, d):
+        import time as _t2
+        rows = []
+        clip = rawi.np.zeros((16000, 1), dtype=rawi.np.float32)   # 1 s: over min_seconds
+        fake = _types.SimpleNamespace(copy=rows.append)
+        with _mock.patch.dict(sys.modules, {"pyperclip": fake}), \
+                _mock.patch.object(rawi, "log_transcript", lambda row, _on: rows.append(row)), \
+                _mock.patch.object(rawi, "active_app", lambda: "app"), \
+                _mock.patch.object(rawi, "fidelity", lambda raw, clean: 1.0):
+            d._cb(clip, 16000, None, None)
+            deadline = _t2.time() + 3.0
+            while _t2.time() < deadline and d.last is None:
+                _t2.sleep(0.01)
+        return rows
+
+    def test_a_key_still_down_copies_and_says_so(self):
+        d = self._d(key_down=True)
+        rows = self._fire(d)
+        self.assertIsNotNone(d.last, "the cap never reached the work")
+        self.assertFalse(hasattr(d, "pasted"))            # no Ctrl+V under a held Ctrl
+        self.assertFalse(d.last["pasted"])
+        self.assertEqual(rows[0], "\u0645\u0631\u062d\u0628\u0627")   # it is on the clipboard
+        self.assertTrue(any("not pasted" in f for f in d.wave.flashed))
+        self.assertEqual(d.last["stop"], "cap 300s")
+
+    def test_no_key_down_pastes_normally(self):
+        # a recording the pill started in hold mode: no key is held, so there is nothing to protect
+        d = self._d(key_down=False)
+        self._fire(d)
+        self.assertEqual(d.pasted, "\u0645\u0631\u062d\u0628\u0627")
+        self.assertTrue(d.last["pasted"])
+        self.assertFalse(any("not pasted" in f for f in d.wave.flashed))
 
 
 import types

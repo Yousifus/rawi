@@ -19,6 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+import rawi
 import rawi_app  # noqa: E402
 
 
@@ -110,9 +111,22 @@ class MaxSecondsSave(unittest.TestCase):
                         current={"hold": 0, "toggle": 180, "latch": 45})
         self.assertEqual(got, {"hold": 0.0, "toggle": 240.0, "latch": 45.0})
 
-    def test_a_plain_number_lifts_into_three_boxes_without_capping_hold(self):
+    def test_a_save_over_a_legacy_plain_number_writes_all_three_boxes(self):
+        # a bare number is the old format rawi ignores; the boxes are what get written over it
         got = self.save({"max_seconds": {"hold": 0, "toggle": 600, "latch": 600}}, current=600)
         self.assertEqual(got, {"hold": 0.0, "toggle": 600.0, "latch": 600.0})
+
+    def test_a_partial_save_keeps_the_daemons_own_defaults(self):
+        # anything that saves one cap from elsewhere must not turn the hold ceiling off, and must
+        # not invent a 180 s toggle cap: the keys it does not name keep the values rawi itself
+        # would use. Ordered so each case starts from a file without the other's writes.
+        self.assertEqual(self.save({"max_seconds": {"latch": 45}}),
+                         {"hold": 300.0, "toggle": 0.0, "latch": 45.0})
+        self.assertEqual(self.save({"max_seconds": {"toggle": 90}}, current=180),
+                         {"hold": 300.0, "toggle": 90.0, "latch": 0.0})
+
+    def test_the_hub_defaults_are_the_daemons_defaults(self):
+        self.assertEqual(rawi_app.CAP_DEFAULTS, dict(rawi.CAP_DEFAULTS))
 
     def test_true_is_not_one_second(self):
         got = self.save({"max_seconds": {"hold": True, "toggle": 240, "latch": 180}},
@@ -122,15 +136,16 @@ class MaxSecondsSave(unittest.TestCase):
 
     def test_infinity_is_not_a_cap(self):
         got = self.save({"max_seconds": {"hold": 0, "toggle": "1e999", "latch": 180}}, current=180)
-        self.assertEqual(got, {"hold": 0.0, "toggle": 180.0, "latch": 180.0})
+        # an unreadable value keeps what rawi itself would use, which is now 0 for the toggle
+        self.assertEqual(got, {"hold": 0.0, "toggle": 0.0, "latch": 180.0})
         self.assertNotIn("Infinity", open(self.cfg, encoding="utf-8").read().replace("\u221e", ""))
 
     def test_a_bad_value_neither_unlocks_nor_raises(self):
         got = self.save({"max_seconds": {"hold": "x", "toggle": "y", "latch": "z"}},
                         current={"hold": "bad", "toggle": 300, "latch": "bad"})
         self.assertEqual(got["toggle"], 300.0)
-        self.assertEqual(got["hold"], 0.0)
-        self.assertEqual(got["latch"], 180.0)
+        self.assertEqual(got["hold"], 300.0)      # the daemon's default ceiling, not 0
+        self.assertEqual(got["latch"], 0.0)       # and its default latch, not 180
 
     def test_a_non_object_patch_leaves_three_caps_alone(self):
         # a bare number is the old format and rawi ignores it; writing one could only flatten
