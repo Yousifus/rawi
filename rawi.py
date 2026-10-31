@@ -116,6 +116,9 @@ DEFAULTS = {
     "compute_type": "float16",
     "device": "auto",       # auto = cuda when a CUDA device is present, else cpu int8
     "language": "auto",
+    # the languages he actually speaks. The probe weighs only these, so a short bilingual line is a
+    # choice between two, not between a hundred. A string is accepted and means one language.
+    "languages": ["ar", "en"],
     "paste": True,
     "restore_clipboard": True,
     "restore_delay": 1.5,     # macOS: seconds before the old clipboard returns (a busy app pastes late)
@@ -477,6 +480,26 @@ def apply_snippets(text: str, cfg) -> str:
     return text
 
 
+LANG_FLOOR = 0.30      # a language must have heard something itself before it may win
+
+
+def _languages(cfg) -> tuple:
+    """The languages to weigh: a list, or a single string, never a list of characters."""
+    raw = (cfg or {}).get("languages")
+    if raw is None:
+        return ("ar", "en")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return ("ar", "en")
+    out = []
+    for x in raw:
+        code = str(x).strip().lower()
+        if code and code not in out:
+            out.append(code)
+    return tuple(out) or ("ar", "en")
+
+
 def dict_terms(cfg):
     d = cfg.get("dictionary") or {}
     names = [str(x).strip() for x in (d.get("names") or []) if str(x).strip()]
@@ -548,6 +571,8 @@ class Rawi:
         self.model_lock = threading.Lock()
         self.frames: list[np.ndarray] = []
         self.stream = None
+        self._mic_lock = threading.Lock()
+        self._mic_used = 0.0
         self.recording = False
         self.started_at = 0.0
         self.busy = threading.Semaphore(1)
@@ -587,6 +612,7 @@ class Rawi:
     def pick_lang(self, audio):
         """Ask the encoder what it hears before deciding how to write it. A short line
         from a bilingual speaker is exactly where a blind auto-detect gets it wrong."""
+        self.lang_probs = {}       # a failed probe must not decide this line from the last one's
         try:
             lang, prob, allp = self.model.detect_language(audio, language_detection_segments=2)
             self.lang_probs = dict(allp or [])
@@ -614,7 +640,25 @@ class Rawi:
         lang, prob = language, 1.0
         if lang is None:
             got, prob = self.pick_lang(audio)
-            need = 0.85 if self.lang_hint else 0.60   # a man mid-conversation keeps his language
+            # He speaks two languages, so weigh only those two: a probe that spreads itself over
+            # look-alikes (ar/fa/ur, en/nl) still says which of HIS languages it heard. A raw
+            # "en 0.51" with the rest on strangers is a clear English line, not a coin toss.
+            pair = _languages(self.cfg)
+            two = {x: float(self.lang_probs.get(x) or 0.0) for x in pair}
+            total = sum(two.values())
+            best = max(two, key=two.get) if two else None
+            best_raw = two.get(best) or 0.0
+            # Only a language that itself heard something may win. Arabic spread thinly over
+            # fa/ur with a little en on top renormalises to a loud "en" while English heard
+            # almost nothing, and forcing it made Whisper translate Arabic into English.
+            if total > 0.05 and best_raw >= LANG_FLOOR:
+                got, prob = best, best_raw / total
+            else:
+                got, prob = None, (best_raw / total if total > 0.05 else 0.0)
+            # a man mid-conversation keeps his language; switching needs 0.75 of the two-way
+            # weight (it was 0.85 of the raw one, which a real accented "hello" never reached,
+            # so English was forced through Arabic and came back translated: «مرحباً»)
+            need = 0.75 if self.lang_hint and got != self.lang_hint else 0.60
             if prob >= need and got:
                 lang = got
             elif self.lang_hint:
@@ -637,6 +681,8 @@ class Rawi:
         if wrote == "en":
             no_arabic = not any("\u0600" <= ch <= "\u06FF" for ch in text)
             roman = [w for w in self.ROMAN_AR if w in text.lower()]
+            # Raw, not two-way, on purpose: this is the last look for Arabic among the letters,
+            # not a re-run of the decision above, and the two thresholds live on different scales.
             ar_runner = float(self.lang_probs.get("ar") or 0.0)
             en_stop = sum(1 for w in re.findall(r"[a-z']+", text.lower()) if w in self.EN_STOP)
             if no_arabic and (roman or (ar_runner >= 0.35 and en_stop <= 2)):
@@ -656,10 +702,11 @@ class Rawi:
                     print(f"[rawi] second look: stayed english (markers={roman[:2]}, "
                           f"runner={ar_runner:.2f}, en_stop={en_stop})", flush=True)
         text = apply_dictionary(text, self.cfg)
-        if wrote in ("ar", "en") and (prob >= 0.60 or lang is not None):
+        if wrote in _languages(self.cfg) and (prob >= 0.60 or lang is not None):
             self.lang_hint = wrote
         self.last_lang = (lang, round(prob, 2))
-        print(f"[rawi] wrote as {wrote} (probe {prob:.2f})", flush=True)
+        heard = " ".join(f"{x} {float(self.lang_probs.get(x) or 0):.2f}" for x in _languages(self.cfg))
+        print(f"[rawi] wrote as {wrote} (probe {prob:.2f}; raw {heard}; hint {self.lang_hint})", flush=True)
         return text, (wrote or "?"), float(getattr(info, "duration", 0.0) or 0.0)
 
     # ---------- the ear ----------
@@ -684,6 +731,8 @@ class Rawi:
         on = bool(on)
         if on == self.ear.on:
             return
+        if on:
+            self.mic_open()
         self.ear.on = on
         if self.wave is not None:
             try:
@@ -700,6 +749,40 @@ class Rawi:
             print("[rawi] ear closed", flush=True)
 
     # ---------- audio ----------
+    def mic_open(self):
+        """Open the microphone if it is closed (~75 ms on a MacBook)."""
+        with self._mic_lock:
+            self._mic_used = time.time()
+            if self.stream is None:
+                self.stream = self.sd.InputStream(samplerate=SR, channels=1, dtype="float32",
+                                                  callback=self._cb, blocksize=0)
+                self.stream.start()
+
+    def _mic_closer(self):
+        """Close an idle microphone. macOS shows its orange mic light the whole time a stream is
+        open, and AirPods drop to call quality, so on a Mac rawi holds the mic only while it is used.
+        "mic_close_after": seconds idle before it closes; 0 keeps it open (the default elsewhere)."""
+        while True:
+            time.sleep(1.0)
+            self.mic_close_if_idle()
+
+    def mic_close_if_idle(self) -> bool:
+        after = float(self.cfg.get("mic_close_after", 5 if IS_MAC else 0) or 0)
+        with self._mic_lock:
+            if self.stream is None or after <= 0:
+                return False
+            if self.recording or (self.ear is not None and self.ear.on):
+                self._mic_used = time.time()
+                return False
+            if time.time() - self._mic_used < after:
+                return False
+            st, self.stream = self.stream, None
+        try:
+            st.stop(); st.close()
+        except Exception as e:
+            print(f"[rawi] closing the mic failed: {e}", flush=True)
+        return True
+
     def _cb(self, indata, frames, time_info, status):  # sounddevice callback
         if self.ear is not None and self.ear.on and not self.recording:
             self.ear.feed(indata)
@@ -720,6 +803,7 @@ class Rawi:
     def start_rec(self):
         if self.recording:
             return
+        self.mic_open()
         self.frames = []
         self.recording = True
         self.started_at = time.time()
@@ -1454,8 +1538,14 @@ def doctor(cfg: dict, deep: bool = False) -> int:
         n = ctranslate2.get_cuda_device_count()
     except Exception:
         n = 0
+    import rawi_mlx
+    engine = str(cfg.get("engine") or "auto").lower()
     if n:
         ok(f"{n} CUDA device(s) visible to ctranslate2")
+    elif IS_MAC and engine in ("auto", "mlx") and rawi_mlx.available():
+        ok("Apple GPU via MLX (mlx-whisper) \u2014 no CUDA needed")
+    elif IS_MAC:
+        warn("no CUDA on a Mac \u2014 CPU is slow; on Apple silicon `pip install mlx-whisper` runs it on the GPU")
     else:
         warn("no CUDA device visible \u2014 will run on CPU (set compute_type to int8 and a small model)")
 
@@ -1559,34 +1649,49 @@ def main() -> int:
             Wave().demo(args.seconds)
         return 0
 
-    device, ctype = "cuda", cfg["compute_type"]
-    want = str(cfg.get("device") or "auto").lower()
-    if want == "cpu":
-        device, ctype = "cpu", "int8"
-        print("[rawi] device: cpu (from config)", flush=True)
-    elif want == "auto" and not cuda_available():
-        device, ctype = "cpu", "int8"
-        print("[rawi] no CUDA device here -> CPU int8", flush=True)
-    else:
-        holder = gpu_gate()
-        if holder and gate_requires_yield(holder):
-            device, ctype = "cpu", "int8"
-            print(f"[rawi] GPU busy with {holder.get('owner')} ({holder.get('purpose')}) -> CPU int8", flush=True)
-    print(f"[rawi] loading {cfg['model']} ({ctype} on {device}) ...", flush=True)
-    t0 = time.time()
-    from faster_whisper import WhisperModel
-    try:
-        model = WhisperModel(cfg["model"], device=device, compute_type=ctype)
-    except Exception as e:
-        print(f"[rawi] load failed ({type(e).__name__}: {e})", flush=True)
-        if device == "cuda":
+    # Apple silicon: Whisper on the GPU through MLX when it is installed (rawi_mlx.py), about
+    # 6x faster than CTranslate2 on the CPU. "engine": "ctranslate2" keeps the old path.
+    model, t0 = None, time.time()
+    engine = str(cfg.get("engine") or "auto").lower()
+    if engine == "mlx" or (engine == "auto" and IS_MAC):
+        import rawi_mlx
+        if rawi_mlx.available():
+            print(f"[rawi] loading {cfg['model']} (MLX on the Apple GPU) ...", flush=True)
             try:
-                model = WhisperModel(cfg["model"], device="cuda", compute_type="int8_float16")
-            except Exception as e2:
-                print(f"[rawi] cuda int8_float16 failed ({type(e2).__name__}: {e2}) -> CPU int8", flush=True)
-                model = WhisperModel(cfg["model"], device="cpu", compute_type="int8")
+                model = rawi_mlx.MlxWhisper(cfg["model"])
+            except Exception as e:
+                print(f"[rawi] MLX load failed ({type(e).__name__}: {e}) -> CTranslate2", flush=True)
+        elif engine == "mlx":
+            print("[rawi] engine mlx asked for, but mlx-whisper is not installed -> CTranslate2", flush=True)
+    if model is None:
+        device, ctype = "cuda", cfg["compute_type"]
+        want = str(cfg.get("device") or "auto").lower()
+        if want == "cpu":
+            device, ctype = "cpu", "int8"
+            print("[rawi] device: cpu (from config)", flush=True)
+        elif want == "auto" and not cuda_available():
+            device, ctype = "cpu", "int8"
+            print("[rawi] no CUDA device here -> CPU int8", flush=True)
         else:
-            raise
+            holder = gpu_gate()
+            if holder and gate_requires_yield(holder):
+                device, ctype = "cpu", "int8"
+                print(f"[rawi] GPU busy with {holder.get('owner')} ({holder.get('purpose')}) -> CPU int8", flush=True)
+        print(f"[rawi] loading {cfg['model']} ({ctype} on {device}) ...", flush=True)
+        t0 = time.time()
+        from faster_whisper import WhisperModel
+        try:
+            model = WhisperModel(cfg["model"], device=device, compute_type=ctype)
+        except Exception as e:
+            print(f"[rawi] load failed ({type(e).__name__}: {e})", flush=True)
+            if device == "cuda":
+                try:
+                    model = WhisperModel(cfg["model"], device="cuda", compute_type="int8_float16")
+                except Exception as e2:
+                    print(f"[rawi] cuda int8_float16 failed ({type(e2).__name__}: {e2}) -> CPU int8", flush=True)
+                    model = WhisperModel(cfg["model"], device="cpu", compute_type="int8")
+            else:
+                raise
     print(f"[rawi] model ready in {time.time()-t0:.1f}s", flush=True)
 
     d = Rawi(cfg)
@@ -1629,9 +1734,8 @@ def main() -> int:
     if os.environ.get("RAWI_NO_DOCK") != "1":
         d.dock = start_dock()
 
-    import sounddevice as sd
-    d.stream = sd.InputStream(samplerate=SR, channels=1, dtype="float32", callback=d._cb, blocksize=0)
-    d.stream.start()
+    d.mic_open()
+    threading.Thread(target=d._mic_closer, daemon=True).start()
 
     from pynput import keyboard
     import time as _time
@@ -1716,6 +1820,7 @@ def main() -> int:
             return
         if state["down"]:
             return
+        threading.Thread(target=d.mic_open, daemon=True).start()   # ready before HOLD ends
         state["down"] = True
         state["press_at"] = _time.time()
         state["combo"] = False
