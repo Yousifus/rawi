@@ -127,7 +127,8 @@ fine-tuned from `en_US-lessac-medium`. The English default is `en_US-libritts_r-
 dataset (LibriTTS-R) is **CC BY 4.0**, but its model card says it too was fine-tuned from
 `en_US-lessac-medium`, and the Lessac dataset's licence does not allow commercial voice synthesis.
 So check both voices before shipping voice mode in a commercial product. The one English Piper
-voice trained from scratch on public-domain data is `en_GB-cori-high` (British). The old default,
+voice trained from scratch on public-domain data is `en_GB-cori-high` (British): for that accent, or
+for no licence question at all, set `"voice_en": "en_GB-cori-high"` in `voice.json`. The old default,
 `en_US-ryan-high`, is CC BY-NC-SA 4.0 (non-commercial) and is not selected on its own.
 
 ## Configuration
