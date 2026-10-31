@@ -507,6 +507,20 @@ details.adv[open] summary{margin-bottom:10px}
   </div>
 
   <div class="sect">
+  <h2>Long recordings</h2>
+  <div class="sub2">A recording that never stops is the usual cause of a transcript full of repeated lines. Each of these is a limit in seconds; 0 means no limit at all.</div>
+  <label>Holding the key</label>
+  <input id="c-maxhold" type="number" min="0" step="10" inputmode="numeric">
+  <div class="hint">300 by default, the same ceiling OpenWhispr uses. A normal hold ends when you let go and is never cut; the ceiling exists for a key-up that never arrives, which behaves exactly like a latched recording. 0 turns it off.</div>
+  <label>Tap twice, then keep recording hands-free</label>
+  <input id="c-maxlatch" type="number" min="0" step="10" inputmode="numeric">
+  <div class="hint">Off by default: this is the mode you start on purpose to dictate at length. Set a limit and rawi stops at it, transcribes what it has, says why it stopped, and treats your next press as the stop you meant.</div>
+  <label>Toggle mode</label>
+  <input id="c-maxtoggle" type="number" min="0" step="10" inputmode="numeric">
+  <div class="hint">Only used if you set <code>mode</code> to <code>toggle</code> in config.json: one press starts, the next stops. Off by default for the same reason as above.</div>
+  </div>
+
+  <div class="sect">
   <h2>Cleanup <span class="opt">optional</span></h2>
   <div class="explain">
     Cleanup sends each line to a small language model running on your own computer, which takes out filler words like "umm" and "يعني" and adds punctuation. It needs an OpenAI-compatible model server running on this computer, set in config.json (the README has the details). Without it, rawi pastes exactly what it heard, which is what most people want.
@@ -1224,6 +1238,14 @@ async function fillCfg(){
     // the level shown is what the daemon will do: a stored level means nothing while cleanup is disabled
     paintLevel(CFG.clean ? (CFG.level||'light') : 'none'); paintTone(CFG.tone||'default');
     snips_loaded=false; renderProfiles(); renderSnips();
+    // One box per mode, each fed by its own key. A bare number is the old format and rawi ignores
+    // it, so the boxes show the defaults rather than a value that will not be obeyed.
+    const raw = CFG ? CFG.max_seconds : undefined;
+    const caps = (raw && typeof raw === 'object') ? raw : {};
+    const capOf = (k, dflt) => (caps[k]===undefined || caps[k]===null || !isFinite(Number(caps[k]))) ? dflt : Number(caps[k]);
+    if($('c-maxhold')) $('c-maxhold').value = capOf('hold', 300);
+    if($('c-maxlatch')) $('c-maxlatch').value = capOf('latch', 0);
+    if($('c-maxtoggle')) $('c-maxtoggle').value = capOf('toggle', 0);
     $('c-lang').value = CFG.language||'auto';
     $('c-model').value = CFG.model||'large-v3-turbo';
     paintChoice('c-log', CFG.log?'on':'off');
@@ -1239,6 +1261,20 @@ async function applyCfg(){
     profiles:collectProfiles(), snippets:collectSnips(),
     language:$('c-lang').value,
     model:$('c-model').value};
+  const capn = (id, dflt)=>{ const v = parseFloat(($(id)||{}).value); return isFinite(v)&&v>=0 ? v : dflt; };
+  if($('c-maxhold')){
+    // three boxes, three keys: the double-tap box used to write `toggle` while a latched
+    // recording is capped by `latch`, so the box showed a limit that was never the one in force
+    const was = (CFG && CFG.max_seconds && typeof CFG.max_seconds === 'object') ? CFG.max_seconds : {};
+    const dflt = {hold:300, latch:0, toggle:0};
+    const box = {hold:'c-maxhold', latch:'c-maxlatch', toggle:'c-maxtoggle'};
+    const out = {};
+    for(const k of ['hold','latch','toggle']){
+      const storedCap = (was[k]===undefined || was[k]===null || !isFinite(Number(was[k]))) ? dflt[k] : Number(was[k]);
+      out[k] = $(box[k]) ? capn(box[k], storedCap) : storedCap;
+    }
+    patch.max_seconds = out;
+  }
   if(lvl!=='none') patch.level = lvl;     // turning cleanup off keeps the level for next time
   await saveNow(patch, 'cfgmsg');
   await fillCfg();

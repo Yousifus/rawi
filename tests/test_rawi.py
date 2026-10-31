@@ -333,6 +333,222 @@ class TestPidAlive(unittest.TestCase):
             if cmd:
                 self.assertNotEqual(cmd[0], "ps")
 
+
+
+class TestHallucinations(unittest.TestCase):
+    """Whisper on silence or room noise: loops and stock YouTube lines (seen on a 22 min recording)."""
+
+    def test_word_loop_collapses_to_once(self):
+        loop = "، ".join(["سعيدة"] * 40) + " هل يمكنك أن تكون هذا الجهاز؟"
+        self.assertEqual(rawi.drop_hallucinations(loop), "سعيدة، هل يمكنك أن تكون هذا الجهاز؟")
+
+    def test_loop_mid_sentence(self):
+        text = "لا يمكننا التعليقات " + " ".join(["بأكام"] * 30) + " في القناة"
+        self.assertEqual(rawi.drop_hallucinations(text), "لا يمكننا التعليقات بأكام في القناة")
+
+    def test_phrase_loop_collapses(self):
+        self.assertEqual(rawi.drop_hallucinations("thank you " * 8 + "bye"), "thank you bye")
+
+    def test_real_repetition_survives(self):
+        self.assertEqual(rawi.drop_hallucinations("no no no I said no"), "no no no I said no")
+        self.assertEqual(rawi.drop_hallucinations("لا لا لا"), "لا لا لا")
+
+    def test_stock_line_alone_is_dropped(self):
+        self.assertEqual(rawi.drop_hallucinations("اشتركوا في القناة"), "")
+        self.assertEqual(rawi.drop_hallucinations("Thanks for watching!"), "")
+
+    def test_stock_line_inside_real_speech_is_kept(self):
+        text = "في نهاية الفيديو قول اشتركوا في القناة"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_empty_is_safe(self):
+        self.assertEqual(rawi.drop_hallucinations(""), "")
+
+class TestMeantRepetition(unittest.TestCase):
+    """A prayer and a laugh are dictation, not a model loop. The old filter cut both at five."""
+
+    def test_a_dhikr_five_times_survives(self):
+        text = " ".join(["سبحان الله"] * 5)
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_a_dhikr_mixed_with_a_real_sentence_survives(self):
+        text = " ".join(["الحمد لله"] * 6) + " الحين نبدأ"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_a_laugh_survives(self):
+        text = "ha ha ha ha ha that was funny"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_arabic_laughter_survives(self):
+        text = "هههههههههه لا تقول"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_a_loop_of_a_real_phrase_still_collapses(self):
+        text = " ".join(["سعيدة"] * 12) + " اليوم"
+        self.assertEqual(rawi.drop_hallucinations(text), "سعيدة اليوم")
+
+
+class TestRepeatThreshold(unittest.TestCase):
+    """The count is a setting: the default sits above how often a person repeats on purpose."""
+
+    def test_default_threshold_is_eight(self):
+        self.assertEqual(rawi._repeat_settings(rawi.DEFAULTS)[0], 8)
+
+    def test_five_identical_words_are_left_alone(self):
+        text = " ".join(["go"] * 5)
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_the_setting_is_read(self):
+        cfg = {"repeat_collapse": {"min_repeats": 3}}
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["go"] * 5), cfg), "go")
+
+    def test_a_20_word_loop_survives_a_high_threshold(self):
+        cfg = {"repeat_collapse": {"min_repeats": 30}}
+        text = " ".join(["go"] * 20)
+        self.assertEqual(rawi.drop_hallucinations(text, cfg), text)
+
+    def test_a_user_keep_list_adds_to_the_built_in_one(self):
+        # it used to replace it: following the README to keep a lone «الله» silently dropped the
+        # dhikr and the laughter, which is the harm this filter exists to prevent
+        cfg = {"repeat_collapse": {"keep": ["الله"]}}
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["الله"] * 9), cfg),
+                         " ".join(["الله"] * 9))
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["سبحان الله"] * 9), cfg),
+                         " ".join(["سبحان الله"] * 9))
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["ha"] * 9), cfg), " ".join(["ha"] * 9))
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["يا رب"] * 9),
+                                                  {"repeat_collapse": {"keep": ["يا رب"]}}),
+                         " ".join(["يا رب"] * 9))
+        # a phrase that is in neither list still obeys the count
+        self.assertEqual(rawi.drop_hallucinations(" ".join(["لا لا"] * 9), cfg), "لا")
+
+    def test_an_unreadable_threshold_falls_back_to_the_default(self):
+        cfg = {"repeat_collapse": {"min_repeats": "many"}}
+        self.assertEqual(rawi._repeat_settings(cfg)[0], 8)
+
+    def test_nonsense_config_does_not_crash(self):
+        self.assertEqual(rawi.drop_hallucinations("hello", {"repeat_collapse": "off"}), "hello")
+
+
+class TestStockLinesRepeated(unittest.TestCase):
+    """Two to four stock lines used to slip through the single-line check."""
+
+    def test_stock_line_twice_is_dropped(self):
+        self.assertEqual(rawi.drop_hallucinations("Thanks for watching! Thanks for watching!"), "")
+
+    def test_stock_line_four_times_in_two_languages_is_dropped(self):
+        text = "اشتركوا في القناة. Thanks for watching. اشتركوا في القناة. Thanks for watching."
+        self.assertEqual(rawi.drop_hallucinations(text), "")
+
+    def test_one_real_word_keeps_everything(self):
+        text = "Thanks for watching! Thanks for watching! ok"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_stock_only_is_true_for_a_pile_and_false_for_one_word(self):
+        self.assertTrue(rawi._stock_only("اشتركوا في القناة اشتركوا في القناة"))
+        self.assertFalse(rawi._stock_only("اشتركوا في القناة ابدأ"))
+
+
+class TestMaxSecondsSetting(unittest.TestCase):
+    """The cap is per way of recording, and a long hold is not a fault."""
+
+    def test_a_bare_number_is_reported_and_ignored(self):
+        # the old form meant "cap toggle and latch at 180". Obeying it now would cut his holds at
+        # three minutes, so it is named at startup and the new defaults apply instead.
+        self.assertEqual(rawi.legacy_max_seconds({"max_seconds": 180}), 180.0)
+        self.assertIsNone(rawi.legacy_max_seconds({"max_seconds": {"hold": 5}}))
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "hold"), 300.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 180}, "latch"), 0.0)
+
+    def test_an_object_gives_each_mode_its_own_cap(self):
+        cfg = {"max_seconds": {"hold": 0, "toggle": 120, "latch": 30}}
+        self.assertEqual(rawi.max_seconds_for(cfg, "hold"), 0.0)
+        self.assertEqual(rawi.max_seconds_for(cfg, "toggle"), 120.0)
+        self.assertEqual(rawi.max_seconds_for(cfg, "latch"), 30.0)
+
+    def test_zero_means_off(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": 0}, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 0}}, "toggle"), 0.0)
+
+    def test_a_missing_hold_key_keeps_the_default_ceiling(self):
+        # you turn the ceiling off by writing {"hold": 0}, not by leaving the key out
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 90}}, "hold"), 300.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": 90}}, "toggle"), 90.0)
+
+    def test_a_missing_toggle_key_falls_back_to_zero(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"hold": 5}}, "toggle"), 0.0)
+
+    def test_the_default_caps_a_hold_and_frees_the_rest(self):
+        # his choice of 2026-11-01, after seeing OpenWhispr: a hold ceiling, no cap on the modes
+        # he starts on purpose
+        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "hold"), 300.0)
+        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for(rawi.DEFAULTS, "latch"), 0.0)
+
+    def test_the_shipped_defaults_are_the_documented_object(self):
+        self.assertEqual(rawi.DEFAULTS["max_seconds"], {"hold": 300, "toggle": 0, "latch": 0})
+
+    def test_a_bad_value_is_not_a_cap(self):
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": "soon"}, "toggle"), 0.0)
+        self.assertEqual(rawi.max_seconds_for({"max_seconds": {"toggle": "soon"}}, "toggle"), 0.0)
+
+
+class TestCapLeavesTheNextTapAlone(unittest.TestCase):
+    """After the cap stops a recording, the tap he meant as "stop" must not start a new one."""
+
+    def _rawi(self, cfg=None):
+        # __new__, not __init__: the constructor opens a microphone and imports sounddevice,
+        # and these tests must run in CI where neither exists.
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False, **(cfg or {}))
+        d.recording = False
+        d._capped = False
+        d._cap_stopped = 0.0
+        d._cap_s = 0.0
+        d._cap_mode = str(d.cfg.get("mode") or "hold")
+        d.wave = None
+        d.mic_open = lambda: None           # the real one opens a device
+        d.start_rec = lambda *a, **k: setattr(d, "started", True)
+        d.stop_and_process = lambda *a, **k: setattr(d, "stopped", True)
+        return d
+
+    def test_a_tap_right_after_the_cap_does_nothing(self):
+        d = self._rawi()
+        d._cap_stopped = rawi.time.time()
+        self.assertEqual(d.toggle_rec(), "capped")
+        self.assertFalse(getattr(d, "started", False))
+        self.assertFalse(getattr(d, "stopped", False))
+
+    def test_the_tap_is_absorbed_only_once(self):
+        d = self._rawi()
+        d._cap_stopped = rawi.time.time()
+        d.toggle_rec()
+        self.assertEqual(d.toggle_rec(), "started")
+
+    def test_an_old_cap_stop_does_not_swallow_a_real_start(self):
+        d = self._rawi()
+        d._cap_stopped = rawi.time.time() - rawi._CAP_TAP_GRACE - 1
+        self.assertEqual(d.toggle_rec(), "started")
+
+    def test_a_running_recording_stops_on_the_tap(self):
+        d = self._rawi()
+        d.recording = True
+        self.assertEqual(d.toggle_rec(), "stopped")
+
+    def test_the_cap_follows_the_mode_of_the_recording(self):
+        d = self._rawi({"mode": "hold", "max_seconds": {"hold": 0, "latch": 45}})
+        del d.start_rec                     # the real one, to see what it records
+        d.recording = False
+        d.start_rec(latched=True)
+        self.assertEqual(d._cap_s, 45.0)
+        self.assertEqual(d._cap_mode, "latch")
+        d.stop_and_process = lambda: None
+        d.recording = False
+        d.start_rec()
+        self.assertEqual(d._cap_s, 0.0)
+
+
 class _FakeStream:
     opened = 0
 
@@ -389,6 +605,210 @@ class TestIdleMic(unittest.TestCase):
         d._mic_used -= 60
         self.assertFalse(d.mic_close_if_idle())
 
+import types as _types
+from unittest import mock as _mock
+
+
+class _FakeWhisper:
+    """A model with the shape Rawi.transcribe uses, so the real call site can be exercised."""
+
+    def __init__(self, text):
+        self.text, self.told = text, []
+
+    def transcribe(self, audio, language=None, **kw):
+        self.told.append(language)
+        return ([_types.SimpleNamespace(text=self.text)],
+                _types.SimpleNamespace(language=language or "ar", duration=1.0))
+
+
+class TestTheFilterReadsItsSetting(unittest.TestCase):
+    """A setting only the tests can change is not a setting: these go through transcribe()."""
+
+    def _rawi(self, text, cfg=None):
+        # __new__, not __init__: the constructor imports sounddevice and a device may not exist.
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, **(cfg or {}))
+        d.model = _FakeWhisper(text)
+        d.lang_hint, d.lang_probs, d.last_lang = None, {}, (None, 0.0)
+        d.wave = None
+        return d
+
+    def _text(self, text, cfg=None):
+        return self._rawi(text, cfg).transcribe(rawi.np.zeros(1600, dtype=rawi.np.float32), "ar")[0]
+
+    def test_the_threshold_setting_reaches_the_live_call(self):
+        nine = " ".join(["same"] * 9)
+        self.assertEqual(self._text(nine).split().count("same"), 1)          # default 8 collapses it
+        self.assertEqual(self._text(nine, {"repeat_collapse": {"min_repeats": 20}}).split().count("same"), 9)
+        self.assertEqual(self._text(" ".join(["same"] * 4),
+                                   {"repeat_collapse": {"min_repeats": 3}}).split().count("same"), 1)
+
+    def test_a_kept_phrase_longer_than_four_words_survives_whole(self):
+        # A guard, not a fix: nothing five words or longer can be detected as a repeat unit (the
+        # window stops at four), so «لا حول ولا قوة إلا بالله» survives by arithmetic. This pins it
+        # so a later wider unit window cannot start eating the six-word dhikr.
+        line = "لا حول ولا قوة إلا بالله"
+        text = self._text(" ".join([line] * 3), {"repeat_collapse": {"min_repeats": 2}})
+        self.assertEqual(text.count("حول"), 3)
+
+    def test_a_single_word_dhikr_needs_the_keep_list(self):
+        # Documented behaviour: «الله» alone at nine repeats is the shape of a Whisper loop, so it
+        # collapses unless he adds it. The escape is one value in config.json.
+        self.assertEqual(self._text(" ".join(["الله"] * 9)).split().count("الله"), 1)
+        kept = {"repeat_collapse": {"keep": ["الله"]}}
+        self.assertEqual(self._text(" ".join(["الله"] * 9), kept).split().count("الله"), 9)
+
+    def test_dhikr_is_never_collapsed_however_long_the_run(self):
+        line = "سبحان الله"
+        self.assertEqual(self._text(" ".join([line] * 12)).count("سبحان"), 12)
+
+
+class _WatchOrder(rawi.Rawi):
+    """Records what the object looked like at the instant `recording` became True."""
+
+    def __setattr__(self, name, value):
+        if name == "recording" and value and "saw" not in self.__dict__:
+            self.__dict__["saw"] = (self.__dict__.get("started_at", 0), )
+        object.__setattr__(self, name, value)
+
+
+class TestTheCapCannotSeeAnOldStart(unittest.TestCase):
+    def test_started_at_is_set_before_the_flag(self):
+        # a callback between the two lines would read the previous recording's time and cap at once
+        d = _WatchOrder.__new__(_WatchOrder)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False)
+        d.recording, d._capped, d._cap_stopped = False, False, 0.0
+        d._cap_mode, d._cap_s, d.wave = "hold", 0.0, None
+        d.started_at = 0.0
+        d.mic_open = lambda: None
+        d.start_rec()
+        self.assertTrue(d.recording)
+        self.assertGreater(d.saw[0], 0.0)
+        self.assertAlmostEqual(d.started_at, d.saw[0])
+
+class _Pill:
+    def __init__(self):
+        self.flashed = []
+
+    def flash(self, text, ok=True, seconds=1.6):
+        self.flashed.append(text)
+
+    def show(self):
+        pass
+
+    def hide(self):
+        pass
+
+    def push(self, *_):
+        pass
+
+
+class TestWhyALineEnded(unittest.TestCase):
+    """A cap is a stop with a reason, and a stop while a key is down must not paste.
+
+    His choice of 2026-11-01, from OpenWhispr's behaviour: a capped recording is never lost, and it
+    says why. When the cap fires during a hold his Ctrl is still down, so the text is copied and the
+    pill says so instead of injecting Ctrl+V into a held modifier.
+    """
+
+    def _rawi(self, paste=True):
+        import collections
+        import threading
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False, paste=paste, log=True, dumb=True)
+        d.busy = threading.Semaphore(1)
+        d.pending = collections.deque()
+        d.injecting, d.last, d.ear = False, None, None
+        d.wave = _Pill()
+        d.transcribe = lambda audio, lang, listen=False: ("مرحبا", "ar", 1.0)
+        d.paste = lambda text: setattr(d, "pasted", text)
+        return d
+
+    def _run(self, d, reason="release", paste=True):
+        rows = []
+        fake = _types.SimpleNamespace(copy=rows.append)
+        with _mock.patch.dict(sys.modules, {"pyperclip": fake}), \
+                _mock.patch.object(rawi, "log_transcript", lambda row, _on: rows.append(row)), \
+                _mock.patch.object(rawi, "active_app", lambda: "app"), \
+                _mock.patch.object(rawi, "fidelity", lambda raw, clean: 1.0):
+            d._work(rawi.np.zeros(1600, dtype=rawi.np.float32), 1.0, False, reason, paste)
+        return rows
+
+    def test_the_reason_is_in_the_history_and_in_last(self):
+        d = self._rawi()
+        self._run(d, reason="cap 300s")
+        self.assertEqual(d.last["stop"], "cap 300s")
+        self.assertEqual(d.pasted, "مرحبا")          # a release-free cap on a tap still pastes
+
+    def test_a_cap_during_a_hold_copies_instead_of_pasting(self):
+        d = self._rawi()
+        rows = self._run(d, reason="cap 300s", paste=False)
+        self.assertFalse(hasattr(d, "pasted"))       # no Ctrl+V into a held Ctrl
+        self.assertFalse(d.last["pasted"])
+        self.assertEqual(rows[0], "مرحبا")            # it is on the clipboard
+        self.assertTrue(any("not pasted" in f for f in d.wave.flashed))
+        self.assertEqual(d.last["stop"], "cap 300s")
+        self.assertEqual(rows[-1]["stop"], "cap 300s")
+
+
+class TestTheCapDecidesWhereTheWordsGo(unittest.TestCase):
+    """The line that decides copy-not-paste is exercised, not handed its answer.
+
+    Feeding `paste=False` in by hand proved that the copy branch works; it proved nothing about the
+    code that chooses it. These drive the audio callback, which is where the cap fires and where the
+    flag is decided, and they read the world after it: the pill, the clipboard, the history row.
+    """
+
+    def _d(self, key_down):
+        import collections
+        import threading
+        import time as _t2
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.cfg = dict(rawi.DEFAULTS, beeps=False, paste=True, log=True, dumb=True)
+        d.busy = threading.Semaphore(1)
+        d.pending = collections.deque()
+        d.injecting, d.ear, d.wave, d.last = False, None, _Pill(), None
+        d.recording, d._capped, d._cap_stopped = True, False, 0.0
+        d._cap_mode, d._cap_s, d.key_down = "hold", 300.0, key_down
+        d.started_at = _t2.time() - 301.0
+        d.frames = []
+        d._stop_lock = threading.Lock()
+        d.transcribe = lambda audio, lang, listen=False: ("\u0645\u0631\u062d\u0628\u0627", "ar", 1.0)
+        d.paste = lambda text: setattr(d, "pasted", text)
+        return d
+
+    def _fire(self, d):
+        import time as _t2
+        rows = []
+        clip = rawi.np.zeros((16000, 1), dtype=rawi.np.float32)   # 1 s: over min_seconds
+        fake = _types.SimpleNamespace(copy=rows.append)
+        with _mock.patch.dict(sys.modules, {"pyperclip": fake}), \
+                _mock.patch.object(rawi, "log_transcript", lambda row, _on: rows.append(row)), \
+                _mock.patch.object(rawi, "active_app", lambda: "app"), \
+                _mock.patch.object(rawi, "fidelity", lambda raw, clean: 1.0):
+            d._cb(clip, 16000, None, None)
+            deadline = _t2.time() + 3.0
+            while _t2.time() < deadline and d.last is None:
+                _t2.sleep(0.01)
+        return rows
+
+    def test_a_key_still_down_copies_and_says_so(self):
+        d = self._d(key_down=True)
+        rows = self._fire(d)
+        self.assertIsNotNone(d.last, "the cap never reached the work")
+        self.assertFalse(hasattr(d, "pasted"))            # no Ctrl+V under a held Ctrl
+        self.assertFalse(d.last["pasted"])
+        self.assertEqual(rows[0], "\u0645\u0631\u062d\u0628\u0627")   # it is on the clipboard
+        self.assertTrue(any("not pasted" in f for f in d.wave.flashed))
+        self.assertEqual(d.last["stop"], "cap 300s")
+
+    def test_no_key_down_pastes_normally(self):
+        # a recording the pill started in hold mode: no key is held, so there is nothing to protect
+        d = self._d(key_down=False)
+        self._fire(d)
+        self.assertEqual(d.pasted, "\u0645\u0631\u062d\u0628\u0627")
+        self.assertTrue(d.last["pasted"])
+        self.assertFalse(any("not pasted" in f for f in d.wave.flashed))
 
 
 import types
