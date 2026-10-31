@@ -1175,11 +1175,9 @@ def start_dock():
     Its own process, not a thread: tkinter wants one interpreter per thread and the pill
     already owns one. Two roots in one process is a crash waiting for a busy morning.
     """
-    if IS_MAC:
-        # a click on a Tk window activates python on macOS, so the paste would land in the dock
-        print("[rawi] dock: not on macOS yet (it would take focus from the app you dictate into)",
-              flush=True)
-        return None
+    # macOS gets a menu bar item instead: a click on a Tk window activates python there,
+    # so the paste would land in the dock; a status-bar menu never takes focus
+    script = "rawi_menubar.py" if IS_MAC else "rawi_dock.py"
     dockpid = os.path.join(ROOT, "dock.pid")
     try:
         old = int(open(dockpid).read().strip() or 0)
@@ -1193,13 +1191,13 @@ def start_dock():
         if not os.path.exists(exe):
             exe = sys.executable
         logf = open(os.path.join(ROOT, "docker.log"), "a", encoding="utf-8", errors="replace")
-        p = subprocess.Popen([exe, os.path.join(ROOT, "rawi_dock.py")],
+        p = subprocess.Popen([exe, os.path.join(ROOT, script)],
                              stdout=logf, stderr=logf, creationflags=NO_WINDOW)
         try:
             open(dockpid, "w").write(str(p.pid))
         except Exception:
             pass
-        print(f"[rawi] dock pid {p.pid}", flush=True)
+        print(f"[rawi] {script[:-3]} pid {p.pid}", flush=True)
         return p
     except Exception as e:
         print(f"[rawi] dock unavailable ({type(e).__name__}: {e})", flush=True)

@@ -10,6 +10,7 @@
 !/rawi.py
 !/rawi_app.py
 !/rawi_dock.py
+!/rawi_menubar.py
 !/rawi_mood.py
 !/stats.py
 !/wave_overlay.py
