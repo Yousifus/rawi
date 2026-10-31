@@ -22,3 +22,6 @@ soundfile>=0.12
 
 # voice mode (optional): local TTS server
 # kokoro==0.9.4
+
+# Apple silicon (optional): Whisper on the Mac GPU, ~4-6x faster than the CPU (rawi_mlx.py)
+# mlx-whisper==0.4.3

@@ -301,6 +301,7 @@ class TestCapLeavesTheNextTapAlone(unittest.TestCase):
         d._cap_s = 0.0
         d._cap_mode = str(d.cfg.get("mode") or "hold")
         d.wave = None
+        d.mic_open = lambda: None           # the real one opens a device
         d.start_rec = lambda *a, **k: setattr(d, "started", True)
         d.stop_and_process = lambda: setattr(d, "stopped", True)
         return d
@@ -339,3 +340,59 @@ class TestCapLeavesTheNextTapAlone(unittest.TestCase):
         d.recording = False
         d.start_rec()
         self.assertEqual(d._cap_s, 0.0)
+class _FakeStream:
+    opened = 0
+
+    def __init__(self, **_):
+        _FakeStream.opened += 1
+        self.closed = False
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+class TestIdleMic(unittest.TestCase):
+    """macOS shows its orange mic light while a stream is open, so an idle mic gets closed."""
+
+    def _rawi(self, after):
+        import threading
+        import types
+        d = rawi.Rawi.__new__(rawi.Rawi)
+        d.sd = types.SimpleNamespace(InputStream=_FakeStream)
+        d.cfg = {"mic_close_after": after}
+        d.stream, d._mic_lock, d._mic_used = None, threading.Lock(), 0.0
+        d.recording, d.ear = False, None
+        return d
+
+    def test_closes_when_idle_and_reopens(self):
+        d = self._rawi(5)
+        d.mic_open()
+        st = d.stream
+        self.assertFalse(d.mic_close_if_idle())          # just used
+        d._mic_used -= 6
+        self.assertTrue(d.mic_close_if_idle())
+        self.assertTrue(st.closed)
+        self.assertIsNone(d.stream)
+        d.mic_open()
+        self.assertIsNotNone(d.stream)
+
+    def test_stays_open_while_recording(self):
+        d = self._rawi(5)
+        d.mic_open()
+        d._mic_used -= 60
+        d.recording = True
+        self.assertFalse(d.mic_close_if_idle())
+        self.assertIsNotNone(d.stream)
+
+    def test_zero_keeps_it_open(self):
+        d = self._rawi(0)
+        d.mic_open()
+        d._mic_used -= 60
+        self.assertFalse(d.mic_close_if_idle())
+
