@@ -82,11 +82,15 @@ def pid_alive(pid: int) -> bool:
     if not IS_WIN:
         try:
             os.kill(int(pid), 0)
-            return True
         except PermissionError:
             return True                      # alive, owned by someone else
         except Exception:
             return False
+        # a zombie (exited, not yet reaped: the hub never waits on the daemon it starts)
+        # still answers kill(pid, 0), and would block the next daemon from starting.
+        # a missing or hung ps must not raise or block this check forever.
+        from rawi_ps import ps_pid_alive
+        return ps_pid_alive(int(pid))
     try:
         import ctypes
         k = ctypes.windll.kernel32
@@ -117,6 +121,7 @@ DEFAULTS = {
     "languages": ["ar", "en"],
     "paste": True,
     "restore_clipboard": True,
+    "restore_delay": 1.5,     # macOS: seconds before the old clipboard returns (a busy app pastes late)
     "beeps": True,
     "log": False,
     # 0 = no cap, and each mode has its own. A hold is capped at 5 minutes because a key-up that
@@ -784,6 +789,10 @@ class Rawi:
         """Whisper, tuned for a man who speaks Arabic and English in the same breath.
         Arabic must come back in Arabic script. The killer bug was an English prompt on
         Arabic audio: it steered the model into writing English for what it heard."""
+        # This line's own probe only. With the language locked (F10) the probe never runs, and the
+        # second look used to read the PREVIOUS auto line's vector: a locked-English line could be
+        # re-run as Arabic on a stale 0.35 because something else had been Arabic a minute ago.
+        self.lang_probs = {}
         lang, prob = language, 1.0
         if lang is None:
             got, prob = self.pick_lang(audio)
@@ -1252,7 +1261,7 @@ class Rawi:
         import pyautogui
         self.injecting = True
         try:
-            pyautogui.hotkey(PASTE_MOD, "z")
+            chord("z")
             time.sleep(0.20)
         finally:
             self.injecting = False
@@ -1261,6 +1270,8 @@ class Rawi:
         return {"ok": True, "raw": L["raw"]}
 
     def paste(self, text: str):
+        if IS_MAC:
+            return self._paste_mac(text)
         import pyperclip
         import pyautogui
         old = None
@@ -1273,7 +1284,7 @@ class Rawi:
         time.sleep(0.10)
         self.injecting = True
         try:
-            pyautogui.hotkey(PASTE_MOD, "v")
+            chord("v")
         finally:
             time.sleep(0.12)
             self.injecting = False
@@ -1283,6 +1294,153 @@ class Rawi:
                 pyperclip.copy(old)
             except Exception:
                 pass
+
+
+    def _paste_mac(self, text: str):
+        """The pasteboard directly, every type of every item. pyperclip sees only text: with a
+        screenshot on the clipboard it saved "" and put "" back, wiping the image, and if a busy
+        app (Claude, mid-answer) read its Cmd+V after that, it pasted nothing at all.
+
+        Two pastes inside restore_delay share one snapshot of the user's clipboard. The second
+        must not photograph the line the first paste left on the board."""
+        string_type = _pasteboard_string_type()
+        pb = _mac_pasteboard()
+        saved = None
+        ours = None
+        gen = 0
+        delay = float(self.cfg.get("restore_delay") or 1.5)
+        try:
+            if self.cfg["restore_clipboard"]:
+                with _clip_lock:
+                    saved = _saved_for_paste(pb)
+                    pb.clearContents()
+                    pb.setString_forType_(text, string_type)
+                    ours = pb.changeCount()
+                    gen = _arm_restore(ours)
+            else:
+                pb.clearContents()
+                pb.setString_forType_(text, string_type)
+            time.sleep(0.05)
+            self.injecting = True
+            try:
+                chord("v")
+            finally:
+                time.sleep(0.12)
+                self.injecting = False
+        except Exception:
+            # The board may already be cleared. Put the old clipboard back now, then let the error go on.
+            if saved is not None:
+                with _clip_lock:
+                    ours = pb.changeCount()
+                    gen = _arm_restore(ours)
+                delay = 0.0
+            raise
+        finally:
+            if saved is not None:
+                threading.Thread(target=_restore_pasteboard,
+                                 args=(saved, ours, delay, gen), daemon=True).start()
+
+
+# While a restore is pending, the pasteboard holds a line we placed. Remember the user's
+# snapshot and the change count of that line so a second paste does not save our own text.
+_clip_lock = threading.Lock()
+_clip_saved = None
+_clip_ours = None
+_clip_gen = 0
+
+
+def _mac_pasteboard():
+    from AppKit import NSPasteboard
+    return NSPasteboard.generalPasteboard()
+
+
+def _new_pasteboard_item():
+    from AppKit import NSPasteboardItem
+    return NSPasteboardItem.alloc().init()
+
+
+def _pasteboard_string_type():
+    from AppKit import NSPasteboardTypeString
+    return NSPasteboardTypeString
+
+
+def _snapshot_pasteboard(pb):
+    return [[(t, item.dataForType_(t)) for t in item.types()]
+            for item in (pb.pasteboardItems() or [])]
+
+
+def _saved_for_paste(pb):
+    """Snapshot the board only when it is not still a line we placed."""
+    global _clip_saved
+    if _clip_ours is not None and pb.changeCount() == _clip_ours and _clip_saved is not None:
+        return _clip_saved
+    saved = _snapshot_pasteboard(pb)
+    _clip_saved = saved
+    return saved
+
+
+def _arm_restore(ours: int) -> int:
+    """Supersede a pending restore. The older thread must not write a dictated line back."""
+    global _clip_ours, _clip_gen
+    _clip_ours = ours
+    _clip_gen += 1
+    return _clip_gen
+
+
+def _restore_pasteboard(saved, ours: int, delay: float, gen: int) -> None:
+    """Put the old clipboard back once a slow app has surely read the paste, and only if the
+    clipboard still holds our line: if he copied something since, that wins.
+    A newer paste supersedes this restore."""
+    global _clip_saved, _clip_ours
+    time.sleep(delay)
+    try:
+        with _clip_lock:
+            if gen != _clip_gen:
+                return
+            pb = _mac_pasteboard()
+            if pb.changeCount() != ours:
+                return
+            items = []
+            for types in saved:
+                item = _new_pasteboard_item()
+                for t, data in types:
+                    if data is not None:
+                        item.setData_forType_(data, t)
+                items.append(item)
+            pb.clearContents()
+            if items:
+                pb.writeObjects_(items)
+            if gen == _clip_gen:
+                _clip_saved = None
+                _clip_ours = None
+    except Exception as e:
+        print(f"[rawi] clipboard restore failed ({type(e).__name__}: {e})", flush=True)
+
+
+MAC_KEYCODES = {"v": 9, "z": 6}      # kVK_ANSI_V, kVK_ANSI_Z: physical keys, so any layout works
+
+
+def chord(key: str) -> None:
+    """Cmd/Ctrl + key, the paste and undo chords.
+
+    On macOS the modifier rides on the key's own event. pyautogui.hotkey posts Cmd and V as two
+    events, and an app can read the V before it has seen the Cmd: the line then arrives as a lone
+    "v" (seen on an M1 Pro with the Arabic layout enabled: 3 stray v's in 35 pastes, 0 this way)."""
+    if not IS_MAC:
+        import pyautogui
+        pyautogui.hotkey(PASTE_MOD, key)
+        return
+    import Quartz
+    # the whole real keypress: Cmd down, key down/up with Cmd held, Cmd up. Some apps (Electron:
+    # Claude, Slack) want the Cmd key event too, and the left-Cmd device bit a keyboard sends.
+    cmd = Quartz.kCGEventFlagMaskCommand | 0x08          # 0x08 = NX_DEVICELCMDKEYMASK
+    src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+    for code, down, flags in ((55, True, cmd), (MAC_KEYCODES[key], True, cmd),
+                              (MAC_KEYCODES[key], False, cmd), (55, False, 0)):
+        ev = Quartz.CGEventCreateKeyboardEvent(src, code, down)       # 55 = kVK_Command
+        Quartz.CGEventSetFlags(ev, flags)
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
+        time.sleep(0.02)
 
 
 def key_to_name(k) -> str:

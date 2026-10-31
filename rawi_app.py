@@ -68,11 +68,14 @@ def pid_alive(pid: int) -> bool:
     if not IS_WIN:
         try:
             os.kill(int(pid), 0)
-            return True
         except PermissionError:
             return True
         except Exception:
             return False
+        # a daemon this hub started and that has exited stays a zombie until reaped.
+        # a missing or hung ps must not raise or block the hub poll forever.
+        from rawi_ps import ps_pid_alive
+        return ps_pid_alive(int(pid))
     try:
         import ctypes
         k = ctypes.windll.kernel32
