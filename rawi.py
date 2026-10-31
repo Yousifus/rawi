@@ -543,6 +543,8 @@ class Rawi:
         self.model_lock = threading.Lock()
         self.frames: list[np.ndarray] = []
         self.stream = None
+        self._mic_lock = threading.Lock()
+        self._mic_used = 0.0
         self.recording = False
         self.started_at = 0.0
         self.busy = threading.Semaphore(1)
@@ -679,6 +681,8 @@ class Rawi:
         on = bool(on)
         if on == self.ear.on:
             return
+        if on:
+            self.mic_open()
         self.ear.on = on
         if self.wave is not None:
             try:
@@ -695,6 +699,40 @@ class Rawi:
             print("[rawi] ear closed", flush=True)
 
     # ---------- audio ----------
+    def mic_open(self):
+        """Open the microphone if it is closed (~75 ms on a MacBook)."""
+        with self._mic_lock:
+            self._mic_used = time.time()
+            if self.stream is None:
+                self.stream = self.sd.InputStream(samplerate=SR, channels=1, dtype="float32",
+                                                  callback=self._cb, blocksize=0)
+                self.stream.start()
+
+    def _mic_closer(self):
+        """Close an idle microphone. macOS shows its orange mic light the whole time a stream is
+        open, and AirPods drop to call quality, so on a Mac rawi holds the mic only while it is used.
+        "mic_close_after": seconds idle before it closes; 0 keeps it open (the default elsewhere)."""
+        while True:
+            time.sleep(1.0)
+            self.mic_close_if_idle()
+
+    def mic_close_if_idle(self) -> bool:
+        after = float(self.cfg.get("mic_close_after", 5 if IS_MAC else 0) or 0)
+        with self._mic_lock:
+            if self.stream is None or after <= 0:
+                return False
+            if self.recording or (self.ear is not None and self.ear.on):
+                self._mic_used = time.time()
+                return False
+            if time.time() - self._mic_used < after:
+                return False
+            st, self.stream = self.stream, None
+        try:
+            st.stop(); st.close()
+        except Exception as e:
+            print(f"[rawi] closing the mic failed: {e}", flush=True)
+        return True
+
     def _cb(self, indata, frames, time_info, status):  # sounddevice callback
         if self.ear is not None and self.ear.on and not self.recording:
             self.ear.feed(indata)
@@ -715,6 +753,7 @@ class Rawi:
     def start_rec(self):
         if self.recording:
             return
+        self.mic_open()
         self.frames = []
         self.recording = True
         self.started_at = time.time()
@@ -1475,9 +1514,8 @@ def main() -> int:
     if os.environ.get("RAWI_NO_DOCK") != "1":
         d.dock = start_dock()
 
-    import sounddevice as sd
-    d.stream = sd.InputStream(samplerate=SR, channels=1, dtype="float32", callback=d._cb, blocksize=0)
-    d.stream.start()
+    d.mic_open()
+    threading.Thread(target=d._mic_closer, daemon=True).start()
 
     from pynput import keyboard
     import time as _time
@@ -1562,6 +1600,7 @@ def main() -> int:
             return
         if state["down"]:
             return
+        threading.Thread(target=d.mic_open, daemon=True).start()   # ready before HOLD ends
         state["down"] = True
         state["press_at"] = _time.time()
         state["combo"] = False
