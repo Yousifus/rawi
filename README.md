@@ -42,8 +42,9 @@ is no account, and no service decides when you may speak.
 
 ## Requirements
 
-- **Windows 10/11** — the tested path. **macOS** and X11 Linux have code paths (see *Platforms*) but no
-  maintainer running them daily.
+- **Windows 10/11** — the maintainer's daily path. **macOS 13+** runs end to end on Apple Silicon (CPU)
+  through the system adapter; see *Platforms* for what has been verified there. X11 Linux has code paths
+  but no regular tester.
 - Python 3.10 – 3.12.
 - An NVIDIA GPU is optional but strongly recommended: `large-v3-turbo` transcribes a sentence in
   well under a second on a modern GPU. On CPU use `small` or `base` with `compute_type: int8`.
@@ -72,6 +73,21 @@ Then start it:
 python rawi.py
 ```
 
+On **macOS** the same steps read:
+
+```bash
+git clone https://github.com/Yousifus/rawi.git && cd rawi
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp config.example.json config.json      # then set "model": "small" for a CPU-only Mac
+python rawi.py --doctor
+python rawi.py                          # or double-click start.command / rawi-app.command
+```
+
+Grant **Accessibility** and **Input Monitoring** to the app you start rawi from (Terminal, iTerm, your
+IDE) under System Settings → Privacy & Security, then restart that app. Without them the hotkeys and
+the paste silently do nothing. `--doctor` tells you whether they are granted.
+
 The first run downloads the Whisper weights (about 1.5 GB for `large-v3-turbo`) from Hugging Face into
 your local cache. After that, no network is needed at all.
 
@@ -85,7 +101,9 @@ your local cache. After that, no network is needed at all.
 | `F10` | language lock: `auto → العربية → English` |
 | `F7` | voice mode: speak the transcript instead of pasting it (needs the optional voice server) |
 
-All of them are config keys, so you can remap any of them.
+All of them are config keys, so you can remap any of them. On a Mac keyboard the F-row sends media
+keys by default: hold `fn` with them, or turn on *Use F1, F2, etc. keys as standard function keys* in
+System Settings → Keyboard.
 
 ## Configuration
 
@@ -109,16 +127,19 @@ Every key is optional; the table below covers the ones worth knowing.
 
 | | Windows | macOS | Linux (X11) |
 |---|---|---|---|
-| record, transcribe, dictionary, ear | ✅ | ✅ expected | ✅ expected |
+| record, transcribe (Arabic + English), dictionary, ear | ✅ | ✅ verified (Apple Silicon, CPU) | ✅ expected |
 | paste | `Ctrl+V` | `⌘V` + **Accessibility permission** | `Ctrl+V`, needs `xdotool` |
+| hold key / F-keys | ✅ | `pynput` + **Input Monitoring** | ✅ expected |
 | focused-app name (for per-app profiles) | `pygetwindow` | `osascript` | `xdotool` |
-| pill / dock / hub | ✅ | pywebview + tkinter, **untested** | untested |
+| pill | ✅ | ✅ runs on the main thread (AppKit requires it) | untested |
+| dock / hub | ✅ | ✅ launch, IPC, daemon restart; tray icon not available | untested |
 | beep | `winsound` | `afplay` | terminal bell |
 
-macOS and Linux paths are implemented and deliberately small — three functions at the top of `rawi.py`
-(`beep`, `active_app`, the paste chord). **They have not been validated on real hardware by the
-maintainer.** If you run macOS, the first thing to grant is Accessibility to whichever process owns the
-keyboard listener, or the paste will silently do nothing.
+Every OS difference lives in one place, the **system adapter** (`rawi_core/system.py`): one class per OS
+with the same methods (`spawn`, `kill`, `pid_alive`, `active_app`, `paste_chord`, `beep`, ...). Nothing
+else in the code checks which OS it is on, so porting is one new class. On macOS the hotkeys and the
+paste still need a run with Accessibility granted to be called verified; the checklist is in
+[docs/MACOS-TESTING.md](docs/MACOS-TESTING.md).
 
 
 ### On a machine without an NVIDIA GPU
@@ -150,9 +171,10 @@ Two things follow from the slower path, and both are handled:
 python -m unittest discover -s tests
 ```
 
-23 tests over the pure logic — normalisation, the fidelity meter, snippets, dictionary repair, config
-invariants. No microphone, no GPU, no clipboard: they run in a millisecond, so you can run them after
-every change.
+167 tests, one file per module: text repair and the fidelity meter, config merging, the system adapter for
+each OS, the hold-key state machine, the ear's voice gate on synthetic audio, a real IPC round trip, every
+number the hub shows, and the daemon's pipeline with a fake model. No microphone, no GPU, no clipboard,
+and nothing beyond numpy: they finish in about half a second, so you can run them after every change.
 
 ## Repository layout
 
@@ -160,20 +182,29 @@ every change.
 rawi.py            the daemon: hotkeys, recording, transcription, paste, the ear, IPC
 rawi_app.py        the hub window (pywebview) + tray icon
 rawi_dock.py       the small dock
-wave_overlay.py    the pill
-rawi_mood.py       a one-word mood tag for the history
-stats.py           local usage statistics
-app.html           the hub's UI (two themes)
+stats.py           local usage statistics (stats.html)
 voice_out.py       optional: a resident Kokoro TTS server for voice mode
-tests/             unit tests (stdlib unittest)
-docs/screens/      the screenshots above
+app.html           the hub's UI (two themes)
+rawi_core/         the library the scripts above are built from:
+  system.py          the system adapter: every Windows / macOS / Linux difference
+  config.py          defaults, load / save config.json
+  text.py            normalisation, fidelity, snippets, dictionary, prompts
+  ear.py             the always-on listener's voice gate
+  hotkeys.py         hold / tap / double-tap state machine
+  overlay.py         the pill
+  ipc.py, voice.py, gpu.py, history.py, analytics.py, mood.py, doctor.py, paths.py
+tests/             unit tests (stdlib unittest), one file per module
+docs/              CODE_INDEX.md (a map of every function), the macOS checklist, screenshots
 site/              the landing page (static, bilingual), deployed at rawi-dictation.vercel.app
 ARCHITECTURE.md    how a sentence travels from your mouth to the cursor
+AGENTS.md          the rules for anyone (or any coding agent) changing the code
 ```
 
 ## Roadmap
 
-- [x] macOS / Linux paste paths (implemented; **macOS verification pending**)
+- [x] macOS / Linux paths behind one system adapter (macOS runs end to end; hotkeys + paste pending a
+      run with Accessibility granted)
+- [ ] A macOS tray / menu-bar icon (pystray needs the main thread, which the hub window owns)
 - [ ] Streaming transcription (words appear while you speak)
 - [ ] A benchmark script so people can compare models on their own hardware
 - [ ] Package as a single executable (`pyinstaller`)
