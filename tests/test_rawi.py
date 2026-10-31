@@ -145,3 +145,33 @@ class TestDeviceChoice(unittest.TestCase):
 class TestQueue(unittest.TestCase):
     def test_queue_holds_more_than_one(self):
         self.assertGreaterEqual(rawi.QUEUE_MAX, 2)
+
+
+class TestHallucinations(unittest.TestCase):
+    """Whisper on silence or room noise: loops and stock YouTube lines (seen on a 22 min recording)."""
+
+    def test_word_loop_collapses_to_once(self):
+        loop = "، ".join(["سعيدة"] * 40) + " هل يمكنك أن تكون هذا الجهاز؟"
+        self.assertEqual(rawi.drop_hallucinations(loop), "سعيدة، هل يمكنك أن تكون هذا الجهاز؟")
+
+    def test_loop_mid_sentence(self):
+        text = "لا يمكننا التعليقات " + " ".join(["بأكام"] * 30) + " في القناة"
+        self.assertEqual(rawi.drop_hallucinations(text), "لا يمكننا التعليقات بأكام في القناة")
+
+    def test_phrase_loop_collapses(self):
+        self.assertEqual(rawi.drop_hallucinations("thank you " * 8 + "bye"), "thank you bye")
+
+    def test_real_repetition_survives(self):
+        self.assertEqual(rawi.drop_hallucinations("no no no I said no"), "no no no I said no")
+        self.assertEqual(rawi.drop_hallucinations("لا لا لا"), "لا لا لا")
+
+    def test_stock_line_alone_is_dropped(self):
+        self.assertEqual(rawi.drop_hallucinations("اشتركوا في القناة"), "")
+        self.assertEqual(rawi.drop_hallucinations("Thanks for watching!"), "")
+
+    def test_stock_line_inside_real_speech_is_kept(self):
+        text = "في نهاية الفيديو قول اشتركوا في القناة"
+        self.assertEqual(rawi.drop_hallucinations(text), text)
+
+    def test_empty_is_safe(self):
+        self.assertEqual(rawi.drop_hallucinations(""), "")

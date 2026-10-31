@@ -484,6 +484,46 @@ def dict_terms(cfg):
     return names, pairs
 
 
+# Lines Whisper invents on silence or room noise: learned from YouTube subtitles, never dictated.
+HALLUCINATIONS = ("اشتركوا في القناة", "اشترك في القناة", "لا تنسوا الاشتراك في القناة",
+                  "ترجمة نانسي قنقر", "شكرا للمشاهدة", "thanks for watching", "thank you for watching",
+                  "please subscribe", "subtitles by the amara.org community")
+_PUNCT = "،,.!?؟؛;:\"'«»…-"
+
+
+def drop_hallucinations(text: str) -> str:
+    """Whisper's two failure modes on silence and noise, removed after the fact.
+
+    A loop: a word or short phrase repeated over and over («سعيدة، سعيدة، سعيدة …»). Five or more
+    back-to-back repeats collapse to one; people do say "no no no", Whisper loops say it forty times.
+    A stock line: «اشتركوا في القناة» and friends, dropped only when it is the whole transcript,
+    so a creator dictating a real call to subscribe keeps it."""
+    if not text:
+        return text
+    words = text.split()
+    key = [_norm(w.strip(_PUNCT)) for w in words]
+    out, i = [], 0
+    while i < len(words):
+        for n in (1, 2, 3, 4):
+            unit = key[i:i + n]
+            if len(unit) < n or not all(unit):
+                continue
+            reps = 1
+            while key[i + reps * n:i + (reps + 1) * n] == unit:
+                reps += 1
+            if reps >= 5:
+                out.extend(words[i:i + n])
+                i += reps * n
+                break
+        else:
+            out.append(words[i])
+            i += 1
+    text = " ".join(out)
+    if _norm(text.strip(_PUNCT + " ")) in {_norm(h) for h in HALLUCINATIONS}:
+        return ""
+    return text
+
+
 def apply_dictionary(text, cfg):
     """Explicit pairs first, then conservative fuzzy repair of known names."""
     if not text:
@@ -544,6 +584,7 @@ class Rawi:
         self.frames: list[np.ndarray] = []
         self.stream = None
         self.recording = False
+        self._capped = False
         self.started_at = 0.0
         self.busy = threading.Semaphore(1)
         self.pending = collections.deque()      # recordings waiting for the model, in order
@@ -650,7 +691,7 @@ class Rawi:
                 else:
                     print(f"[rawi] second look: stayed english (markers={roman[:2]}, "
                           f"runner={ar_runner:.2f}, en_stop={en_stop})", flush=True)
-        text = apply_dictionary(text, self.cfg)
+        text = apply_dictionary(drop_hallucinations(text), self.cfg)
         if wrote in ("ar", "en") and (prob >= 0.60 or lang is not None):
             self.lang_hint = wrote
         self.last_lang = (lang, round(prob, 2))
@@ -705,6 +746,13 @@ class Rawi:
                     pass
         if self.recording:
             self.frames.append(indata.copy())
+            # max_seconds was a setting nothing read: a latched recording ran 22 minutes and Whisper
+            # filled the silence with stock lines. Stop it here (off the audio thread).
+            if (not self._capped and
+                    time.time() - self.started_at > float(self.cfg.get("max_seconds") or 180)):
+                self._capped = True
+                print(f"[rawi] max_seconds ({self.cfg.get('max_seconds')}) reached, stopping", flush=True)
+                threading.Thread(target=self.stop_and_process, daemon=True).start()
             if self.wave is not None:
                 try:
                     rms = float(np.sqrt(np.mean(np.square(indata))))
@@ -716,6 +764,7 @@ class Rawi:
         if self.recording:
             return
         self.frames = []
+        self._capped = False
         self.recording = True
         self.started_at = time.time()
         beep(880, 55, self.cfg["beeps"])
