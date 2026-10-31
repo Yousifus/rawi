@@ -28,7 +28,7 @@ GAP = 3
 W = 300
 H = 64
 M = 6                    # margin, so the transparent key shows around the capsule
-BG = "#010203"           # the transparent key colour (Windows); macOS uses real transparency
+BG = "#010203"           # the transparent key colour (Windows); macOS fills with CARD
 CARD = "#14100a"
 EDGE = "#5a4320"
 GOLD = "#e8b34a"
@@ -172,7 +172,7 @@ class Wave:
         root = tk.Tk()
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        bg = plat.prepare_overlay(root, BG)
+        bg = plat.prepare_overlay(root, BG, CARD)
         root.configure(bg=bg)
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()

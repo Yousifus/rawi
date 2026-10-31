@@ -26,7 +26,7 @@ from rawi_core.system import current as current_platform
 PLAT = current_platform()
 HUB_TITLE = "Rawi"
 
-BG = "#010203"           # the transparent key colour (Windows); macOS uses real transparency
+BG = "#010203"           # the transparent key colour (Windows)
 CARD = "#14100a"
 EDGE = "#3d2f1c"
 GOLD = "#e8b34a"
@@ -78,7 +78,7 @@ class Dock:
         self.root = root
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        self.bg = PLAT.prepare_overlay(root, BG)
+        self.bg = PLAT.prepare_overlay(root, BG, CARD)
         root.configure(bg=self.bg)
 
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
@@ -98,7 +98,7 @@ class Dock:
         self.tip = tk.Toplevel(root)
         self.tip.overrideredirect(True)
         self.tip.attributes("-topmost", True)
-        PLAT.prepare_overlay(self.tip, BG)
+        PLAT.prepare_overlay(self.tip, BG, CARD)
         self.tip.configure(bg=self.bg)
         self.tip.withdraw()
         self.tipcv = tk.Canvas(self.tip, bg=self.bg, highlightthickness=0)

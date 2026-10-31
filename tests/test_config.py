@@ -1,4 +1,6 @@
 """rawi_core.config: defaults, merging, first-run creation, saving."""
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -67,6 +69,9 @@ class TestFiles(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.path = os.path.join(self.dir.name, "config.json")
+        quiet = contextlib.redirect_stdout(io.StringIO())   # the expected warnings, unprinted
+        quiet.__enter__()
+        self.addCleanup(quiet.__exit__, None, None, None)
 
     def tearDown(self):
         self.dir.cleanup()

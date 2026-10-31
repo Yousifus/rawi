@@ -34,6 +34,24 @@ class TestSelection(unittest.TestCase):
         self.assertFalse(system.for_platform("win32").tk_needs_main_thread)
         self.assertFalse(system.for_platform("linux").tk_needs_main_thread)
 
+    def test_macos_gets_the_menu_bar_instead_of_the_dock(self):
+        self.assertEqual(system.for_platform("darwin").dock_script, "rawi_menubar.py")
+        self.assertEqual(system.for_platform("win32").dock_script, "rawi_dock.py")
+        self.assertEqual(system.for_platform("linux").dock_script, "rawi_dock.py")
+
+    def test_launcher_hints(self):
+        self.assertEqual(system.for_platform("win32").launcher_hint, "start.bat")
+        self.assertEqual(system.for_platform("darwin").launcher_hint, "start.command")
+
+    def test_overlay_colours(self):
+        root = mock.MagicMock()
+        # Windows keys out a colour; macOS fills with the card colour (systemTransparent drew black)
+        self.assertEqual(system.for_platform("win32").prepare_overlay(root, "#010203", "#14100a"), "#010203")
+        self.assertEqual(system.for_platform("darwin").prepare_overlay(root, "#010203", "#14100a"), "#14100a")
+        style = root.tk.call.call_args.args
+        self.assertEqual(style[:2], ("::tk::unsupported::MacWindowStyle", "style"))
+        self.assertEqual(style[3:], ("help", "none"))      # floating, never takes focus
+
     def test_fonts_scale_on_macos(self):
         self.assertEqual(system.for_platform("win32").font(9), ("Segoe UI", 9))
         self.assertEqual(system.for_platform("win32").font(9, bold=True), ("Segoe UI Semibold", 9))
@@ -103,6 +121,7 @@ class TestProcesses(unittest.TestCase):
         while system.current().pid_alive(p.pid) and time.time() < deadline:
             time.sleep(0.05)
         self.assertFalse(system.current().pid_alive(p.pid))
+        p.wait(timeout=5)              # let Popen learn it is gone (pid_alive already reaped it)
 
     def test_kill_stops_a_process(self):
         p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])

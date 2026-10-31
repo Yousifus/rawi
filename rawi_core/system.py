@@ -60,6 +60,10 @@ class Platform:
     tray_supported = True
     #: the optional cleaner server's launcher, looked for next to rawi.py
     cleaner_script = "cleaner-server.sh"
+    #: the always-visible helper the daemon starts: the Tk dock, or the menu bar icon on macOS
+    dock_script = "rawi_dock.py"
+    #: what to tell someone to run when the daemon will not start (it prints why)
+    launcher_hint = "python rawi.py"
     #: font families for the Tk pill and dock (regular, bold, symbols)
     font_family = "TkDefaultFont"
     font_family_bold = "TkDefaultFont"
@@ -201,9 +205,13 @@ class Platform:
         family = self.font_family_symbol if symbol else (self.font_family_bold if bold else self.font_family)
         return (family, max(1, round(size * self.font_scale)))
 
-    def prepare_overlay(self, root, key_color: str) -> str:
-        """Make `key_color` see-through on a borderless Tk window. Returns the colour to paint
-        transparent areas with (canvases must use it as their background too)."""
+    def prepare_overlay(self, root, key_color: str, fill_color: str) -> str:
+        """Style a borderless floating Tk window before it is shown. Returns the colour to paint
+        its background (and its canvases) with.
+
+        key_color   the colour to make see-through, where the OS has a colour key (Windows)
+        fill_color  the colour to use instead where it does not (the window's own card colour)
+        """
         try:
             root.attributes("-transparentcolor", key_color)
         except Exception:
@@ -245,6 +253,7 @@ class WindowsPlatform(Platform):
     name = "windows"
     tray_supported = True
     cleaner_script = "cleaner-server.bat"
+    launcher_hint = "start.bat"
     font_family = "Segoe UI"
     font_family_bold = "Segoe UI Semibold"
     font_family_symbol = "Segoe UI Symbol"
@@ -359,7 +368,7 @@ class WindowsPlatform(Platform):
                 pass
             os.environ["PATH"] = dp + os.pathsep + os.environ.get("PATH", "")
 
-    def prepare_overlay(self, root, key_color: str) -> str:
+    def prepare_overlay(self, root, key_color: str, fill_color: str) -> str:
         try:
             root.attributes("-transparentcolor", key_color)
         except Exception:
@@ -402,6 +411,10 @@ class MacPlatform(Platform):
     tk_needs_main_thread = True
     # pystray's macOS backend wants the main thread too, which pywebview already owns.
     tray_supported = False
+    # A click on a Tk window activates python on macOS, so the next paste would land in the dock.
+    # A menu bar item never takes focus (Abdulrahman's fix, tested on an M1 Pro).
+    dock_script = "rawi_menubar.py"
+    launcher_hint = "start.command"
     font_family = "Helvetica Neue"
     font_family_bold = "Helvetica Neue Medium"
     font_family_symbol = "Apple Symbols"
@@ -436,13 +449,15 @@ class MacPlatform(Platform):
         except Exception:
             return False
 
-    def prepare_overlay(self, root, key_color: str) -> str:
-        # Aqua Tk has no colour key; it has true per-window transparency instead.
+    def prepare_overlay(self, root, key_color: str, fill_color: str) -> str:
+        """A floating, non-activating window ("help" class), so showing it never takes focus
+        from the app being dictated into. Aqua Tk has no colour key, and its systemTransparent
+        drew black on real hardware, so the corners take the card colour instead."""
         try:
-            root.attributes("-transparent", True)
-            return "systemTransparent"
+            root.tk.call("::tk::unsupported::MacWindowStyle", "style", root._w, "help", "none")
         except Exception:
-            return key_color
+            pass
+        return fill_color
 
     def make_passive(self, root, *, click_through: bool) -> None:
         """Run as an accessory app (no Dock icon, never steals focus from the app being typed

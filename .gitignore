@@ -12,6 +12,7 @@
 !/rawi.py
 !/rawi_app.py
 !/rawi_dock.py
+!/rawi_menubar.py
 !/rawi_core/
 !/stats.py
 !/voice_out.py

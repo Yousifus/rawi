@@ -33,6 +33,7 @@ HUB_DEBUG_LOG = os.path.join(ROOT, "app_debug.log")  # messages from app.html vi
 DAEMON_SCRIPT = os.path.join(ROOT, "rawi.py")
 HUB_SCRIPT = os.path.join(ROOT, "rawi_app.py")
 DOCK_SCRIPT = os.path.join(ROOT, "rawi_dock.py")
+MENUBAR_SCRIPT = os.path.join(ROOT, "rawi_menubar.py")   # macOS, in place of the dock
 VOICE_SCRIPT = os.path.join(ROOT, "voice_out.py")
 VOICE_LAUNCHER = os.path.join(ROOT, "launch_voice.py")
 HUB_PAGE = os.path.join(ROOT, "app.html")

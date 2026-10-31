@@ -314,12 +314,28 @@ class TestHubConfig(unittest.TestCase):
         c = self.api.get_config()
         self.assertTrue(c["ok"])
         self.assertFalse(c["clean"])
-        self.assertEqual((c["talk"], c["mood"], c["model"]), (False, "auto", "small"))
+        self.assertEqual((c["talk"], c["mood"], c["model"], c["log"]), (False, "auto", "small", False))
+        self.assertEqual(c["keys"], {"paste": "f9", "lang": "f10", "talk": "f7", "listen": "f8"})
+
+    def test_a_blank_hold_key_is_ignored(self):
+        # an empty value would silently kill dictation
+        self.api.save_config({"hold_key": "  ", "model": ""})
+        self.assertEqual((self.saved()["hold_key"], self.saved()["model"]), ("ctrl_l", "small"))
+
+    def test_history_can_be_switched_on(self):
+        self.api.save_config({"log": True})
+        self.assertTrue(self.saved()["log"])
+
+    def test_the_reply_carries_a_message(self):
+        r = self.api.save_config({"talk": True})
+        self.assertTrue(r["ok"])
+        self.assertIn("restarted", r["message"])
 
     def test_an_unreadable_file_is_not_overwritten(self):
         with open(self.path, "w", encoding="utf-8") as f:
             f.write("{ broken")
-        self.assertEqual(self.api.save_config({"talk": True}), "could not read config.json")
+        self.assertEqual(self.api.save_config({"talk": True}),
+                         {"ok": False, "message": "Could not read config.json."})
         with open(self.path, encoding="utf-8") as f:
             self.assertEqual(f.read(), "{ broken")
 

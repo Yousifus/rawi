@@ -598,13 +598,15 @@ class Rawi:
 
 # ---------------------------------------------------------------- helper processes
 def start_dock():
-    """Best effort: the small always-on-top capsule, in its own process.
+    """Best effort: the dock (Windows, Linux) or the menu bar icon (macOS), in its own process.
 
     Its own process, not a thread: Tk wants one interpreter per thread and the pill already owns
     one (and on macOS the main thread). Two roots in one process is a crash waiting for a busy
-    morning.
+    morning. macOS gets a menu bar item instead of the Tk dock: clicking a Tk window there
+    activates python, so the next paste would land in the dock (found by Abdulrahman on an M1).
     """
     plat = current_platform()
+    script = os.path.join(paths.ROOT, plat.dock_script)
     try:
         with open(paths.DOCK_PID, encoding="utf-8") as f:
             old = int(f.read().strip() or 0)
@@ -614,14 +616,13 @@ def start_dock():
     except Exception:
         pass
     try:
-        p = plat.spawn([plat.background_python(), paths.DOCK_SCRIPT], log_path=paths.DOCK_LOG,
-                       cwd=paths.ROOT)
+        p = plat.spawn([plat.background_python(), script], log_path=paths.DOCK_LOG, cwd=paths.ROOT)
         try:
             with open(paths.DOCK_PID, "w", encoding="utf-8") as f:
                 f.write(str(p.pid))
         except Exception:
             pass
-        print(f"[rawi] dock pid {p.pid}", flush=True)
+        print(f"[rawi] {plat.dock_script[:-3]} pid {p.pid}", flush=True)
         return p
     except Exception as e:
         print(f"[rawi] dock unavailable ({type(e).__name__}: {e})", flush=True)
@@ -678,17 +679,19 @@ def claim_single_instance() -> bool:
 
 
 def exit_cleanly_on_sigterm() -> None:
-    """Turn SIGTERM (the hub's restart / quit on macOS and Linux) into SystemExit, so atexit
-    handlers such as the pid-file cleanup run. Python's default would skip them.
+    """Turn SIGTERM (the hub's restart, the menu bar's Quit) and SIGHUP (closing the terminal
+    window rawi runs in) into SystemExit, so atexit handlers such as the pid-file cleanup run.
+    Python's default would skip them. Windows has neither signal in practice; it is harmless there.
 
     Call it after the pill exists: on macOS, Tk's start-up replaces the process's SIGTERM
     handler at the C level (Python's getsignal() does not notice), and the process then dies
     with exit code 1 and no cleanup.
     """
-    try:
-        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    except Exception:
-        pass
+    for name in ("SIGTERM", "SIGHUP"):
+        try:
+            signal.signal(getattr(signal, name), lambda *_: sys.exit(0))
+        except Exception:
+            pass                        # SIGHUP does not exist on Windows
 
 
 def load_model(cfg: dict):

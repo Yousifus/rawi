@@ -84,7 +84,7 @@ class TestAnalytics(unittest.TestCase):
 
     def test_snapshot_shape(self):
         snap = analytics.snapshot(ROWS, NOW)
-        self.assertEqual(len(snap["days"]), 42)
+        self.assertEqual(snap["days"][-1]["iso"], NOW.date().isoformat())
         self.assertEqual(len(snap["hours"]), 24)
         self.assertEqual(snap["today"]["n"], 2)
         self.assertEqual(snap["recent"][0]["text"], "We ship it Friday.")
@@ -108,6 +108,38 @@ class TestAnalytics(unittest.TestCase):
         self.assertIn({"heard": "shp", "wrote": "ship"}, [{k: f[k] for k in ("heard", "wrote")} for f in v["fixes"]])
         self.assertEqual(v["langs"], {"ar": 1, "en": 3, "mixed": 0, "n": 4})
         self.assertEqual(v["top"][0]["w"], "ship")
+
+    def test_calendar_is_whole_weeks_starting_on_sunday(self):
+        days = analytics.calendar_days(NOW.date())          # 30 Oct 2026 is a Friday
+        self.assertEqual(days[0].strftime("%A"), "Sunday")
+        self.assertEqual(days[-1], NOW.date())
+        self.assertEqual(len(days), 7 * 25 + 6)              # 25 full weeks, then Sun..Fri
+        self.assertEqual(len(analytics.calendar_days(dt.date(2026, 11, 1))), 7 * 25 + 1)
+
+    def test_script_of(self):
+        self.assertEqual(analytics.script_of("hello"), "en")
+        self.assertEqual(analytics.script_of("مرحبا"), "ar")
+        self.assertEqual(analytics.script_of("hello مرحبا"), "mixed")
+        self.assertEqual(analytics.script_of("123"), "other")
+
+    def test_arabic_punctuation_is_not_a_word(self):
+        rows = [row(NOW, "كيف؟ كيف، كيف")]
+        top = analytics.voice_report(rows, NOW)["top"]
+        self.assertEqual([t["w"] for t in top], ["كيف"])
+        self.assertEqual(top[0]["n"], 3)
+
+    def test_insights(self):
+        ins = analytics.voice_report(ROWS, NOW)["insights"]
+        self.assertEqual(sum(ins["weekdays"]), 4)
+        self.assertEqual(len(ins["lang_weeks"]), 8)
+        self.assertEqual(ins["lang_weeks"][-1]["from"], "25 Oct")   # this week's Sunday
+        self.assertEqual(ins["avg_len"]["ar"], 3.0)
+        self.assertEqual(ins["active_days"], 3)
+        self.assertEqual(ins["longest_run"], 3)
+        self.assertEqual(ins["apps_lang"][0], {"app": "Slack", "ar": 1, "en": 1, "mixed": 0, "n": 2})
+        self.assertEqual(ins["best_day"]["d"], "Fri 30 Oct")
+        self.assertIn("ship", ins["vocab"]["new_examples"])
+        json.dumps(ins)
 
     def test_galaxy_window(self):
         g = analytics.galaxy(ROWS, NOW)

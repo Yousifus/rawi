@@ -12,7 +12,8 @@ Start with [ARCHITECTURE.md](../ARCHITECTURE.md) for *why* the parts are split t
 ```
 rawi.py            entry point: the daemon (mic, hotkeys, model, paste, IPC server)
 rawi_app.py        entry point: the hub window + tray icon (pywebview)
-rawi_dock.py       entry point: the dock, a small always-on-top capsule (Tk, own process)
+rawi_dock.py       entry point: the dock, a small always-on-top capsule (Tk, own process; Windows, Linux)
+rawi_menubar.py    entry point: the menu bar icon, the macOS stand-in for the dock (AppKit, own process)
 stats.py           entry point: writes stats.html from the history
 voice_out.py       entry point: optional local TTS server (Kokoro), for voice mode
 launch_voice.py    entry point: starts voice_out.py detached
@@ -37,6 +38,7 @@ rawi.py ──────────► config, doctor, gpu, history, ipc, pat
                     overlay, system, text
 rawi_app.py ──────► analytics, config, history, ipc, paths, gpu, system
 rawi_dock.py ─────► ipc, paths, overlay (capsule), system
+rawi_menubar.py ──► ipc, paths, system   (+ pyobjc: AppKit, Foundation)
 stats.py ─────────► analytics, history, paths
 launch_voice.py ──► paths, system
 
@@ -59,11 +61,11 @@ The one process that owns hardware. Everything else talks to it over IPC.
 |---|---|
 | `main()` | parses `--test / --doctor / --demo / --model / --deep / --seconds`, then routes |
 | `claim_single_instance()` | `daemon.pid` guard; removes the file at exit |
-| `exit_cleanly_on_sigterm()` | SIGTERM → SystemExit so cleanup runs (must be called after the pill exists, see macOS notes) |
+| `exit_cleanly_on_sigterm()` | SIGTERM / SIGHUP → SystemExit so cleanup runs (must be called after the pill exists, see macOS notes) |
 | `load_model(cfg)` | `gpu.choose_device` + `gpu.load_model`, prints why |
 | `transcribe_file(d, path)` | `--test`: read a wav, resample to 16 kHz, transcribe, print |
 | `run_live(d)` | pill → ear → voice → IPC → dock → mic stream → key listener → main loop |
-| `start_dock()` | spawn `rawi_dock.py` once (guarded by `dock.pid`) |
+| `start_dock()` | spawn the adapter's `dock_script` once (guarded by `dock.pid`): the dock, or the menu bar on macOS |
 | `demo(seconds)` | `--demo`: the pill with fake levels |
 | **`class Rawi`** | the daemon's state; every key and IPC action is a method |
 | `Rawi.transcribe(audio, language, listen)` | language probe → Whisper → romanised-Arabic second look → dictionary |
@@ -82,7 +84,7 @@ The one process that owns hardware. Everything else talks to it over IPC.
 | `main()` | starts the cleaner (if any), (re)starts the daemon, opens the window, starts the tray |
 | `class Api` | everything `app.html` calls as `pywebview.api.<name>()`; replies must keep their shapes |
 | `Api.snapshot / voice / galaxy / room / style_samples / history` | thin wrappers over `rawi_core.analytics` |
-| `Api.get_config / save_config(patch)` | the Settings tab; `save_config` applies **only the keys present** in the patch, then restarts the daemon |
+| `Api.get_config / save_config(patch)` | the Settings tab; `save_config` applies **only the keys present** in the patch (blank values ignored), restarts the daemon, and replies `{ok, message}` |
 | `Api.restart_daemon / stop_daemon` | process control through the system adapter |
 | `daemon_pids()`, `status_block()`, `ensure_cleaner()`, `cleaner_up()` | live state for the page |
 | `_tray()`, `_start_tray_later()` | pystray icon (Windows); skipped where `tray_supported` is False |
@@ -91,6 +93,13 @@ The one process that owns hardware. Everything else talks to it over IPC.
 `class Dock` (Tk on the main thread, a queue fed by `_status_poll`), `open_hub()`,
 `hold_key_label()`. Click left = toggle recording, middle (when shown) = swap to raw words,
 right = open the hub. Drag to move; the position is saved in `dock.json`.
+
+### `rawi_menubar.py` — the menu bar (macOS)
+By Abdulrahman Aldosari. A status-bar item whose icon follows the daemon (`mic`, `mic.fill` while
+recording, `ear` while the ear is on, `mic.slash` when it is not running), polled once a second over
+IPC. Its menu: start / stop dictation, always listening, open the hub, restart, **Quit Rawi** (stops the
+daemon and the hub). A menu bar item never takes focus, which is why it replaces the Tk dock on a Mac.
+`class Bar` (the item and its actions), `daemon_pid()`, `hub_pid()`, `start_daemon()`, `main()`.
 
 ### `stats.py`
 `render(rows, now, template)` (pure: fills `template.html`), `bars_svg()`, `main()`.
@@ -122,9 +131,11 @@ any OS's adapter with `for_platform("win32" | "darwin" | "linux")`.
 | `cleaner_command(root)` | `cleaner-server.bat` | `cleaner-server.sh` | `cleaner-server.sh` |
 | `register_gpu_libraries()` | pip CUDA DLL dirs | no-op | no-op |
 | `font(size, bold, symbol)` | Segoe UI | Helvetica Neue (×4/3) | Tk default |
-| `prepare_overlay(root, key)` | colour-key transparency | real transparency | none |
+| `prepare_overlay(root, key, fill)` | colour-key transparency | floating "help" window, filled with the card colour | none |
 | `make_passive(root, click_through)` | WS_EX_NOACTIVATE (+TRANSPARENT) | accessory app, ignores mouse | no-op |
 | `tk_needs_main_thread` | False | **True** | False |
+| `dock_script` | `rawi_dock.py` | `rawi_menubar.py` | `rawi_dock.py` |
+| `launcher_hint` | `start.bat` | `start.command` | `python rawi.py` |
 | `tray_supported` | True | False | True |
 
 ### `config.py`
@@ -171,8 +182,9 @@ name pynput reports on this OS. `key_to_name(k)`. Timing: `HOLD`, `TAP`, `DOUBLE
 `day_streak`.
 
 ### `analytics.py` — pure, fully tested
-`summary`, `snapshot`, `voice_report`, `galaxy`, `room`, `style_samples`, `search`. The output
-shapes are a contract with `app.html`.
+`summary`, `snapshot` (with the 26-week `calendar_days`), `voice_report` (whose `insights` are the
+Patterns: weekdays, languages by week, vocabulary, apps, moods, runs), `galaxy`, `room`,
+`style_samples`, `search`, `script_of`. The output shapes are a contract with `app.html`.
 
 ### `overlay.py` — the pill
 `class Wave(fps, own_thread)`: `show / hide / flash / push / quit` (any thread, queue only),

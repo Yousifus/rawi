@@ -6,38 +6,45 @@ leaves the machine, and history is off by default.
 
 ## Results so far
 
-**2026-10-31 · macOS 27.0.1 · Apple Silicon (arm64) · Python 3.12 · CPU only · Accessibility not granted**
+**2026-10-31 · MacBook Pro M1 Pro · macOS 15.1 · Python 3.12** — by Abdulrahman Aldosari, who made the
+port work: the pill on the main thread, left Ctrl under its macOS name, the hub's Windows-only calls,
+the single-instance guard, and a menu bar icon in place of the dock (a click on the Tk dock took focus
+from the app being typed into, so the paste landed in the dock). Dictation tested end to end; `small`
+took 2.5–3.5 s a line, `large-v3-turbo` about 10 s. The double-tap latch, F8, F9 and F10 were not tried.
+
+**2026-10-31 · macOS 27.0.1 · Apple silicon · Python 3.12 · CPU · Accessibility not granted** — the
+refactor onto the system adapter (`rawi_core/`), merged with the port above:
 
 | step | result |
 |---|---|
 | 1. install (`pip install -r requirements.txt`) | pass: every wheel installs, no compiler needed |
 | 2. `--doctor` | pass: `summary: ready`; warns no CUDA (correct) and that Accessibility is not granted |
 | `--test` English (`base`) / Arabic (`small`) | pass: 0.6 s / 1.8 s; Arabic comes back in Arabic script |
-| `--demo` (the pill) | pass, after the fix: it used to abort with `NSWindow should only be instantiated on the main thread` |
-| live daemon: mic, IPC toggle → transcribe, ear on/off, dock process, single instance, Ctrl+C / SIGTERM cleanup | pass |
-| 5. hub: opens, JS bridge boots in WKWebView, restarts and stops the daemon, copy | pass, after the fix: it used to crash at launch on `creationflags` |
-| 3–4. hold key, F-keys, paste into TextEdit | **not yet verified**: needs Accessibility + Input Monitoring granted (the machine above had neither) |
-| how the pill and dock look | **not yet verified**: the screen was locked during the run |
+| `--demo` (the pill) | pass |
+| live daemon: mic, IPC toggle → transcribe, ear on/off, menu bar process, single instance | pass |
+| quitting: Ctrl+C, SIGTERM (hub restart, menu bar Quit), closing the terminal window | pass: the daemon exits and removes `daemon.pid` |
+| 5. hub: opens, JS bridge boots in WKWebView, restarts and stops the daemon, copy | pass |
+| 3–4. hold key, F-keys, paste into TextEdit | **not verified on this machine**: needs Accessibility + Input Monitoring |
+| how the pill and the menu bar icon look | **not verified on this machine**: the screen was locked |
 
-Bugs the run found and fixed: the pill crashing the daemon (Tk off the main thread), the hold key never
-firing (pynput reports left Ctrl as `ctrl` on macOS), the hub crashing at launch (Windows-only process
-flags), `launch_voice.py` crashing the same way, SIGTERM skipping cleanup (Tk replaces the handler),
-and a stopped daemon counting as alive (zombie process).
+Found on this run beyond the port: Tk's start-up on macOS replaces the SIGTERM handler, so a stopped
+daemon skipped its cleanup; and a daemon the hub had stopped lingered as a zombie that still counted as
+alive. Both are fixed.
 
 ## 0. What must be true first
 
 - macOS 13 or newer, Apple silicon or Intel.
 - Homebrew present (`brew --version`), Python 3.10–3.12 (`python3 --version`).
-- **Accessibility permission** granted to the app that will own the keyboard listener
-  (Terminal / iTerm / the Python binary). Without it the hotkeys fire but the paste does nothing —
-  the most likely failure, and a silent one.
+- **Accessibility** and **Input Monitoring** granted to the app that will own the keyboard listener
+  (Terminal / iTerm / the Python binary). Without them the hotkeys or the paste do nothing — the
+  most likely failure, and a silent one. `python rawi.py --doctor` warns when Accessibility is missing.
 - **Microphone permission** granted to the same app on first record.
 
 ## 1. Install
 
 ```bash
 git clone https://github.com/Yousifus/rawi.git && cd rawi
-python3 -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate   # stock macOS python3 is 3.9: too old
 pip install -r requirements.txt
 cp config.example.json config.json
 ```
@@ -111,9 +118,10 @@ button in the lower left flips paper/night. macOS uses WKWebView rather than Web
 blank, that is the finding — report macOS version and the console output.
 
 There is no tray icon on macOS (pystray needs the main thread, which the window owns), so closing the
-hub window closes the hub. The daemon keeps running and the hotkeys keep working. To stop a daemon the
-hub started, run `pkill -f rawi.py`; one you started with `python rawi.py` stops with Ctrl+C in its
-terminal.
+hub window closes the hub. The daemon keeps running and the hotkeys keep working. The **menu bar icon**
+is the Mac's tray: its menu starts and stops dictation, opens the hub, and **Quit Rawi** stops the
+daemon and the hub. A daemon started with `python rawi.py` also stops with Ctrl+C or by closing its
+terminal window.
 
 ## 6. The ear's thresholds
 

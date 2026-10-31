@@ -5,8 +5,9 @@ passed in as `now` / `today`, so the same history always gives the same answer a
 build rows by hand. The output shapes are exactly what app.html reads; change both together.
 
     summary(rows, today)          shared totals: per day, per hour, languages, latency, streak
-    snapshot(rows, now)           Usage tab (the hub adds a live "status" block)
-    voice_report(rows, now)       Voice tab: pace, top words, the cleaner's frequent fixes
+    snapshot(rows, now)           Usage tab: totals and a 26-week calendar (the hub adds "status")
+    voice_report(rows, now)       Voice tab: pace, top words, the cleaner's fixes, `insights`
+    insights(rows, now, ...)      Patterns: weekdays, languages by week, vocabulary, moods, runs
     galaxy(rows, now, days)       the sky: every dictation as a star
     room(rows, today)             Room tab: today's sentences and one honest gauge
     style_samples(rows, limit)    Style tab: raw vs cleaned pairs
@@ -22,8 +23,10 @@ from collections import Counter, defaultdict
 
 from .history import app_label, day_streak, fmt_mins, words
 
-_TOKEN_RE = re.compile(r"[\w؀-ۿ']+")
-_AR_RE = re.compile(r"[؀-ۿ]")
+# a word: letters (\w covers Arabic) plus Arabic diacritics. Not the whole U+06xx block, which
+# also holds the Arabic comma, semicolon and question mark (U+060C, U+061B, U+061F).
+_TOKEN_RE = re.compile(r"[\w\u064B-\u065F\u0670']+")
+_AR_RE = re.compile(r"[\u0600-\u06FF]")
 _EN_RE = re.compile(r"[A-Za-z]")
 
 # words too common to say anything about a voice, in both languages
@@ -40,6 +43,24 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
 
 def _fmt(d: dt.datetime) -> str:
     return d.strftime("%d %b %H:%M")
+
+
+def _sunday_on_or_before(day: dt.date) -> dt.date:
+    """Weeks start on Sunday in the hub (date.weekday() counts Monday as 0)."""
+    return day - dt.timedelta(days=(day.weekday() + 1) % 7)
+
+
+def calendar_days(today: dt.date, weeks: int = 26) -> list[dt.date]:
+    """Every day from the Sunday `weeks - 1` weeks before this week's, through today:
+    whole weeks, so the Usage calendar draws one weekday per row."""
+    start = _sunday_on_or_before(today) - dt.timedelta(days=7 * (weeks - 1))
+    return [start + dt.timedelta(days=i) for i in range((today - start).days + 1)]
+
+
+def script_of(text: str) -> str:
+    """"ar", "en", "mixed" (both scripts) or "other" (neither)."""
+    a, e = bool(_AR_RE.search(text or "")), bool(_EN_RE.search(text or ""))
+    return "mixed" if a and e else ("ar" if a else ("en" if e else "other"))
 
 
 # ---------------------------------------------------------------- shared totals
@@ -94,7 +115,7 @@ def snapshot(rows: list[dict], now: dt.datetime) -> dict:
     today = now.date()
     s = summary(rows, today)
     t, tw, ts, lats = s["today"], s["words"], s["seconds"], s["latencies"]
-    days = [(today - dt.timedelta(days=i)) for i in range(41, -1, -1)]
+    days = calendar_days(today)
     recent = [_row_view(r) for r in sorted(rows, key=lambda r: r["_dt"], reverse=True)[:12]]
     return {
         "when": now.strftime("%A %d %B %Y, %H:%M"),
@@ -105,7 +126,8 @@ def snapshot(rows: list[dict], now: dt.datetime) -> dict:
                 "lat": "%.2f" % statistics.median(lats) if lats else "0",
                 "rtf": "%.1f" % (ts / sum(lats)) if lats and sum(lats) else "0"},
         "streak": s["streak"],
-        "days": [{"d": x.strftime("%d %b"), "words": s["per_day"].get(x, 0)} for x in days],
+        "days": [{"d": x.strftime("%a %d %b"), "iso": x.isoformat(), "words": s["per_day"].get(x, 0)}
+                 for x in days],
         "hours": [s["hours"].get(h, 0) for h in range(24)],
         "langs": s["langs"].most_common(),
         "apps": [{"name": k, "n": v} for k, v in
@@ -198,7 +220,96 @@ def voice_report(rows: list[dict], now: dt.datetime) -> dict:
             "slowest": {"wpm": round(slow[0]) if slow else 0,
                         "line": (slow[1].get("text") or "")[:110] if slow else ""},
             "first_day": rows[0]["_dt"].strftime("%d %b %Y"),
-            "all": span(rows)}
+            "all": span(rows), "insights": insights(rows, now, counts)}
+
+
+def insights(rows: list[dict], now: dt.datetime, counts: dict[str, int] | None = None) -> dict:
+    """More counts over the same log, nothing estimated (the Voice tab's Patterns).
+
+    weekdays     dictations per weekday, Sunday first
+    lang_weeks   the last 8 weeks, oldest first: {"from", "ar", "en", "mixed"} dictations
+    avg_len      average words per dictation, by script
+    vocab        {"unique", "total", "new_week", "new_examples"}: words first said this week,
+                 most used first (`counts` ranks them; computed here when not given)
+    apps_lang    the 6 busiest apps, with dictations per script
+    moods        the 8 most frequent mood tags
+    active_days, longest_run, best_day
+    """
+    rows = [r for r in rows if (r.get("text") or "").strip()]
+    if counts is None:
+        counts = {}
+        for r in rows:
+            for t in _TOKEN_RE.findall((r.get("text") or "").lower()):
+                counts[t] = counts.get(t, 0) + 1
+
+    weekdays = [0] * 7
+    for r in rows:
+        weekdays[(r["_dt"].weekday() + 1) % 7] += 1
+
+    week_start = _sunday_on_or_before(now.date())
+    lang_weeks = []
+    for i in range(7, -1, -1):
+        ws = week_start - dt.timedelta(days=7 * i)
+        b = {"from": ws.strftime("%d %b"), "ar": 0, "en": 0, "mixed": 0}
+        for r in rows:
+            if ws <= r["_dt"].date() < ws + dt.timedelta(days=7):
+                kind = script_of(r.get("text"))
+                if kind in b:
+                    b[kind] += 1
+        lang_weeks.append(b)
+
+    lens: dict[str, list[int]] = {"ar": [], "en": [], "mixed": []}
+    for r in rows:
+        kind = script_of(r.get("text"))
+        if kind in lens:
+            lens[kind].append(words(r.get("text")))
+    avg_len = {k: (round(sum(v) / len(v), 1) if v else 0) for k, v in lens.items()}
+
+    first_seen: dict[str, dt.datetime] = {}
+    total_tok = 0
+    for r in sorted(rows, key=lambda r: r["_dt"]):
+        for t in _TOKEN_RE.findall((r.get("text") or "").lower()):
+            total_tok += 1
+            if len(t) >= 3 and t not in STOPWORDS and not t.isdigit() and t not in first_seen:
+                first_seen[t] = r["_dt"]
+    new_words = sorted((w for w, d in first_seen.items() if now - d < dt.timedelta(days=7)),
+                       key=lambda w: -counts.get(w, 0))
+    vocab = {"unique": len(first_seen), "total": total_tok, "new_week": len(new_words),
+             "new_examples": new_words[:10]}
+
+    apps: dict[str, dict] = {}
+    for r in rows:
+        a = app_label(r.get("app"))
+        if a:
+            b = apps.setdefault(a, {"app": a, "ar": 0, "en": 0, "mixed": 0, "n": 0})
+            kind = script_of(r.get("text"))
+            if kind in b:
+                b[kind] += 1
+            b["n"] += 1
+    apps_lang = sorted(apps.values(), key=lambda b: -b["n"])[:6]
+
+    moods: dict[str, dict] = {}
+    for r in rows:
+        m = r.get("mood") or {}
+        if m.get("m"):
+            e = moods.setdefault(m["m"], {"m": m["m"], "e": m.get("e") or "", "n": 0})
+            e["n"] += 1
+    top_moods = sorted(moods.values(), key=lambda x: -x["n"])[:8]
+
+    days_on = sorted({r["_dt"].date() for r in rows})
+    longest = run = 0
+    for i, d in enumerate(days_on):
+        run = run + 1 if i and (d - days_on[i - 1]).days == 1 else 1
+        longest = max(longest, run)
+    per_day: Counter = Counter()
+    for r in rows:
+        per_day[r["_dt"].date()] += words(r.get("text"))
+    best = max(per_day.items(), key=lambda kv: kv[1]) if per_day else None
+
+    return {"weekdays": weekdays, "lang_weeks": lang_weeks, "avg_len": avg_len, "vocab": vocab,
+            "apps_lang": apps_lang, "moods": top_moods, "active_days": len(days_on),
+            "longest_run": longest,
+            "best_day": ({"d": best[0].strftime("%a %d %b"), "words": best[1]} if best else None)}
 
 
 # ---------------------------------------------------------------- the sky

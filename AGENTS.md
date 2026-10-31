@@ -32,10 +32,12 @@ Set up once with `python -m venv .venv`, then `pip install -r requirements.txt` 
 2. **Tk on macOS lives on the main thread.** Creating a Tk window anywhere else aborts the
    whole process (`NSWindow should only be instantiated on the main thread`). The pill
    (`rawi_core/overlay.py`) handles this through `owns_main_thread` / `run()`; the dock is its own
-   process with Tk on its main thread. Do not add a Tk window to the daemon any other way.
+   process with Tk on its main thread. Do not add a Tk window to the daemon any other way. On macOS
+   the dock is replaced by the menu bar icon (`rawi_menubar.py`): clicking a Tk window there takes
+   focus from the app being dictated into.
 3. **Hotkey names go through `canonical_key()`.** pynput reports left Ctrl as `ctrl` on macOS
    (it shares a keycode with `ctrl`), so comparing raw config names breaks the hold key there.
-4. **Fail open.** The pill, dock, cleaner, voice server and tray are optional. Their failure must
+4. **Fail open.** The pill, dock, menu bar, cleaner, voice server and tray are optional. Their failure must
    be printed and survived, never allowed to cost the user a dictation. A failed paste leaves the
    text on the clipboard.
 5. **Keep `rawi_core` importable with numpy alone.** Import faster_whisper, sounddevice, pynput,
@@ -63,6 +65,6 @@ Set up once with `python -m venv .venv`, then `pip install -r requirements.txt` 
 
 1. `python -m unittest discover -s tests` passes.
 2. `python rawi.py --doctor` still prints `summary: ready` on your machine.
-3. If you touched the daemon's live path, the pill, the dock or the hub, run it and use it.
+3. If you touched the daemon's live path, the pill, the dock, the menu bar or the hub, run it and use it.
    Unit tests cannot see a window. On macOS, Terminal (or your IDE) needs Accessibility and
    Input Monitoring before hotkeys and paste work.

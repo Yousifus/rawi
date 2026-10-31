@@ -140,8 +140,12 @@ class Api:
         c = config.merged(user)
         cl = c.get("clean") or {}
         d = c.get("dictionary") or {}
+        ls = c.get("listen") or {}
         return {"ok": True,
                 "hold_key": c.get("hold_key"),
+                "keys": {"paste": c.get("paste_key"), "lang": c.get("lang_key"),
+                         "talk": c.get("talk_key"), "listen": ls.get("key")},
+                "log": bool(c.get("log")),
                 "clean": bool(cl.get("enabled")),
                 "level": cl.get("level", "light"),
                 "tone": cl.get("tone", "default"),
@@ -159,16 +163,18 @@ class Api:
 
         Partial patches are normal (the Mode switch sends only {"talk": ...}), so a key that is
         absent from the patch must leave the file alone — before, every save without "clean"
-        switched the cleaner on.
+        switched the cleaner on. Replies are {"ok", "message"}; the page shows the message.
         """
         try:                       # an unreadable file is left alone: it may hold the user's work
             with open(paths.CONFIG, encoding="utf-8") as f:
                 c = json.load(f)
         except Exception:
-            return "could not read config.json"
+            return {"ok": False, "message": "Could not read config.json."}
         for key in ("hold_key", "language", "model"):
-            if patch.get(key):
+            if str(patch.get(key) or "").strip():   # an empty value would silently kill dictation
                 c[key] = patch[key]
+        if "log" in patch:
+            c["log"] = bool(patch["log"])
         cl = c.setdefault("clean", {})
         if "clean" in patch:
             cl["enabled"] = bool(patch["clean"])
@@ -189,9 +195,11 @@ class Api:
             d["names"] = [str(x) for x in (patch.get("names") or [])]
             d["pairs"] = [str(x) for x in (patch.get("pairs") or [])]
         if not config.save(c, paths.CONFIG):
-            return "could not write config.json"
+            return {"ok": False, "message": "Could not write config.json."}
         n = self.restart_daemon()
-        return {"ok": True, "message": "Saved. Daemon restarted (%d process%s)." % (n, "" if n == 1 else "es")}
+        return {"ok": True, "message": ("Saved. rawi restarted and is loading the model." if n
+                                        else "Saved, but rawi did not start again. Run %s to see why."
+                                        % PLAT.launcher_hint)}
 
     # ---- small utilities for the page ----
     def copy(self, text):

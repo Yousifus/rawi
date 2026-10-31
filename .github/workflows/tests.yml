@@ -21,6 +21,6 @@ jobs:
       - name: install the one import the tests need
         run: python -m pip install --quiet numpy
       - name: every file compiles
-        run: python -m compileall -q rawi.py rawi_app.py rawi_dock.py stats.py launch_voice.py voice_out.py rawi_core tests
+        run: python -m compileall -q rawi.py rawi_app.py rawi_dock.py rawi_menubar.py stats.py launch_voice.py voice_out.py rawi_core tests
       - name: unit tests (no microphone, no GPU, no clipboard)
         run: python -m unittest discover -s tests -v
