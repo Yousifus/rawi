@@ -63,15 +63,20 @@ h2{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--fain
 .tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin:6px 0 18px}
 .tabs button{background:none;border:0;padding:9px 0 11px;color:var(--dim);font:13px/1 "Segoe UI",sans-serif;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .tabs button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
-.heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,15px);grid-auto-columns:15px;gap:4px}
-.heat i{border-radius:3px;background:var(--hover);border:1px solid transparent;display:block}
+.heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,auto);grid-template-columns:repeat(var(--wk,26),1fr);gap:3px}
+.heat i{border-radius:3px;background:color-mix(in srgb,var(--text) 8%,transparent);border:1px solid transparent;display:block;aspect-ratio:1}
+.heatgrid{flex:1;min-width:0}
+.heatmonths{display:grid;grid-template-columns:repeat(var(--wk,26),1fr);gap:3px;height:14px;margin-bottom:4px;
+  font-size:10px;color:var(--faint);white-space:nowrap}
+.heatdays{display:grid;grid-template-rows:14px repeat(7,1fr);row-gap:3px;padding-top:4px;font-size:9.5px;color:var(--faint);text-align:right}
+.heatdays span:first-child{height:14px}
 .heat i.l1{background:color-mix(in srgb,var(--accent) 25%,transparent)}
 .heat i.l2{background:color-mix(in srgb,var(--accent) 50%,transparent)}
 .heat i.l3{background:color-mix(in srgb,var(--accent) 75%,transparent)}
 .heat i.l4{background:var(--accent)}
-.heatwrap{display:flex;gap:16px;align-items:flex-start}
+.heatwrap{display:flex;gap:8px;align-items:stretch}
 .legend{display:flex;align-items:center;gap:5px;color:var(--faint);font-size:11px;margin-top:10px}
-.legend i{width:11px;height:11px;border-radius:3px;display:block;background:var(--hover)}
+.legend i{width:11px;height:11px;border-radius:3px;display:block;background:color-mix(in srgb,var(--text) 8%,transparent)}
 .legend i.l1{background:color-mix(in srgb,var(--accent) 25%,transparent)}
 .legend i.l2{background:color-mix(in srgb,var(--accent) 50%,transparent)}
 .legend i.l3{background:color-mix(in srgb,var(--accent) 75%,transparent)}
@@ -92,7 +97,7 @@ label{display:block;margin:20px 0 7px;color:var(--faint);font-size:10.5px;letter
 .btn.ghost{background:none;border:1px solid var(--stroke);color:var(--dim);font-weight:400;margin-left:8px}
 .hint{color:var(--faint);font-size:11.5px;margin-top:8px;max-width:560px}
 .empty{color:var(--faint);padding:18px 0}
-.hidden{display:none!important}
+.hidden,[hidden]{display:none!important}
 table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:10px 8px;border-bottom:1px solid var(--line)}
 td{padding:11px 8px;border-bottom:1px solid var(--rowline);font-size:13.5px}
@@ -202,25 +207,68 @@ td .x:hover{color:var(--accent)}
 .fx .n{margin-left:auto;color:var(--faint);font-size:11.5px}
 .langbar{display:flex;height:10px;border-radius:6px;overflow:hidden;margin:10px 0 8px;background:var(--line)}
 .langbar i{display:block;height:100%}
+
+/* ---- home, notes, settings sections ---- */
+:root{--edge:var(--line); --warn:#a8641c}
+:root[data-theme="night"]{--warn:#e0a24a}
+.navlabel{margin:18px 11px 6px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.kchip{display:inline-block;font:600 11.5px/1 Consolas,monospace;color:var(--text);background:var(--bg);border:1px solid var(--stroke);
+  border-bottom-width:2px;border-radius:6px;padding:4px 7px;vertical-align:1px;white-space:nowrap}
+.banner{display:flex;gap:16px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:22px 24px}
+.bdot{width:12px;height:12px;border-radius:50%;background:var(--dot);flex:0 0 12px;margin-top:9px}
+.bdot.live{background:var(--good);box-shadow:0 0 10px var(--good)}
+.bdot.warn{background:var(--warn)}
+.btitle{font-family:var(--display);font-size:24px;line-height:1.3}
+.bline{color:var(--dim);font-size:13.5px;margin-top:4px;max-width:620px}
+.banner .btn{margin-top:14px}
+.note{border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));background:color-mix(in srgb,var(--warn) 9%,var(--card));
+  color:var(--text);border-radius:12px;padding:12px 15px;font-size:13px;margin:14px 0 18px;max-width:760px}
+.note a{color:var(--accent)}
+.note .btn{margin:10px 0 0;padding:7px 14px;font-size:12.5px}
+.steps3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.steps3 .card{display:flex;flex-direction:column;gap:5px}
+.steps3 .n{width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--ink);display:grid;place-items:center;font-weight:600;font-size:12px;margin-bottom:4px}
+.steps3 b{font-weight:600;font-size:14px}
+.steps3 span:not(.kchip){color:var(--dim);font-size:12.5px}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:9px 16px;align-items:center;font-size:13px}
+.keys .kd{color:var(--dim)}
+.today{display:flex;gap:26px;align-items:baseline;margin-bottom:6px}
+.today .v{font-size:26px}
+.more{display:inline-block;margin-top:10px;color:var(--accent);font-size:12.5px;cursor:pointer;background:none;border:0;padding:0}
+.sect{border-top:1px solid var(--line);margin-top:30px}
+.sect:first-of-type{border-top:0;margin-top:0}
+.sect > h2{margin-top:24px;font-size:12px;color:var(--accent)}
+.opt{font-weight:400;letter-spacing:.08em;color:var(--faint);margin-left:6px}
+.explain{color:var(--dim);font-size:13px;max-width:700px;margin:0 0 14px}
+.cstat{display:flex;gap:8px;align-items:center;margin-top:8px;color:var(--text);font-size:12.5px}
+.choice .sample{margin-top:10px}
+details.adv{margin-top:18px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--card)}
+details.adv summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--text)}
+details.adv[open] summary{margin-bottom:10px}
+.savebar{position:sticky;bottom:-44px;margin:34px -34px -44px;padding:14px 34px 18px;background:var(--panel);
+  border-top:1px solid var(--line);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.savebar .btn{margin-top:0}
+.savebar .hint{margin:0 0 0 10px}
 </style>
 </head>
 <body>
 <aside>
   <div class="brand"><div class="mark">ر</div><div><b>Rawi</b><span>your voice, written</span></div></div>
   <nav>
-    <button id="t-home" class="on" onclick="tab('home')"><span class="i">◈</span>Room</button>
-    <button id="t-voice" onclick="tab('voice')"><span class="i">♪</span>Voice</button>
-    <button id="t-usage" onclick="tab('usage')"><span class="i">▤</span>Usage</button>
+    <button id="t-home" class="on" onclick="tab('home')"><span class="i">⌂</span>Home</button>
     <button id="t-hist" onclick="tab('hist')"><span class="i">≡</span>History</button>
     <button id="t-dict" onclick="tab('dict')"><span class="i">✎</span>Dictionary</button>
-    <button id="t-style" onclick="tab('style')"><span class="i">⌁</span>Style</button>
     <button id="t-set" onclick="tab('set')"><span class="i">⚙</span>Settings</button>
+    <div class="navlabel">Your stats</div>
+    <button id="t-sky" onclick="tab('sky')"><span class="i">✦</span>Sky</button>
+    <button id="t-usage" onclick="tab('usage')"><span class="i">▤</span>Usage</button>
+    <button id="t-voice" onclick="tab('voice')"><span class="i">♪</span>Patterns</button>
   </nav>
   <div class="spacer"></div>
   <div class="sidecard">
     <div class="t">Status</div>
     <div class="r"><span class="dot" id="dot"></span><span id="statustext">checking...</span></div>
-    <div class="r"><span class="dot" id="dot2"></span><span id="cleanertext">cleaner</span></div>
+    <div class="r" id="earrow" hidden><span class="dot live"></span><span>Always listening is on</span></div>
   </div>
   <button class="themebtn" id="themebtn" onclick="toggleTheme()">Night</button>
 </aside>
@@ -228,6 +276,34 @@ td .x:hover{color:var(--accent)}
 <div class="inner">
 
 <section id="v-home">
+  <div class="banner" id="h-banner">
+    <div class="bdot" id="h-dot"></div>
+    <div>
+      <div class="btitle" id="h-title">Checking whether rawi is running...</div>
+      <div class="bline" id="h-line"></div>
+      <button class="btn" id="h-start" hidden onclick="startRawi()">Start rawi</button>
+    </div>
+  </div>
+  <div class="note" id="h-cleanwarn" hidden>Cleanup is switched on, but no cleanup model is running on this computer, so rawi pastes exactly what it heard. <a href="#" onclick="tab('set');return false">Settings</a> explains what cleanup needs.</div>
+
+  <h2>How to talk to it</h2>
+  <div class="steps3">
+    <div class="card"><div class="n">1</div><b>Click where you want the text</b><span>Any app: WhatsApp, Word, your browser, a chat box.</span></div>
+    <div class="card"><div class="n">2</div><b>Hold <span class="kchip" id="h-hold">Left Ctrl</span> and speak</b><span>Arabic, English, or both in one sentence.</span></div>
+    <div class="card"><div class="n">3</div><b>Let go</b><span>rawi writes it and pastes it at your cursor. Your clipboard is put back afterwards.</span></div>
+  </div>
+
+  <h2>Your keys</h2>
+  <div class="card keys" id="h-keys"></div>
+
+  <h2>Today</h2>
+  <div id="h-today"></div>
+</section>
+
+<section id="v-sky" class="hidden">
+  <h1>Sky</h1>
+  <div class="sub">Every line you have said is a star: the newest near the centre, older ones further out, bigger for longer lines. Hover a star to read it, scroll to zoom, drag to move. The gear changes what the colours mean.</div>
+  <div class="note histoff" hidden></div>
   <div class="room">
     <div class="rdate" id="r-date"></div>
     <div class="sky">
@@ -237,7 +313,7 @@ td .x:hover{color:var(--accent)}
         <button class="fchip on" data-f="all" onclick="skyFilter('all')">all</button>
         <button class="fchip" data-f="en" onclick="skyFilter('en')">english</button>
         <button class="fchip" data-f="ar" onclick="skyFilter('ar')">عربي</button>
-        <button class="fchip" data-f="clean" onclick="skyFilter('clean')">only the clean ones</button>
+        <button class="fchip" data-f="clean" onclick="skyFilter('clean')" title="hide lines the cleanup model changed">unchanged by cleanup</button>
       </div>
       <span class="skycount" id="sky-count"></span>
       <button class="skygear" id="sky-gear" onclick="skyCfgToggle()" title="sky settings">⚙</button>
@@ -274,8 +350,9 @@ td .x:hover{color:var(--accent)}
 
 
 <section id="v-voice" class="hidden">
-  <h1>Your voice</h1>
-  <div class="sub">Recomputed from your own log every time this page opens — <span id="v-built">…</span>. Every number is a count of something you actually said, and every word below opens the lines that prove it.</div>
+  <h1>Patterns</h1>
+  <div class="sub">How you speak: your pace, the words you use most, the hours you talk, and how your two languages mix. Every number is counted from your own history (<span id="v-built">…</span>), and clicking a word shows the lines it came from.</div>
+  <div class="note histoff" hidden></div>
   <div class="vgrid">
     <div class="card vcard"><div class="k">pace, this week</div><div class="big" id="v-wpm">—</div><div class="hint" id="v-wpm-d">words per minute, spoken</div></div>
     <div class="card vcard"><div class="k">this week</div><div class="big" id="v-week">—</div><div class="hint" id="v-week-d"></div></div>
@@ -287,6 +364,7 @@ td .x:hover{color:var(--accent)}
   </div>
 </section>
 <section id="v-usage" class="hidden">
+  <div class="note histoff" hidden></div>
   <div class="hero">
     <p class="ar">كلامك يصير كتابة</p>
     <p class="en">Hold the key. <em>Speak.</em> It is already written.</p>
@@ -301,7 +379,11 @@ td .x:hover{color:var(--accent)}
   <h2>Your voice</h2>
   <div class="two">
     <div class="card">
-      <div class="heatwrap"><div class="heat" id="heat"></div></div>
+      <div class="k" style="margin-bottom:10px">Words per day, last 26 weeks</div>
+      <div class="heatwrap">
+        <div class="heatdays"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
+        <div class="heatgrid"><div class="heatmonths" id="heatmonths"></div><div class="heat" id="heat"></div></div>
+      </div>
       <div class="legend">less <i></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> more</div>
     </div>
     <div class="card">
@@ -325,42 +407,60 @@ td .x:hover{color:var(--accent)}
 
 <section id="v-hist" class="hidden">
   <h1>History</h1>
-  <div class="sub">Everything you have said, exactly as it was pasted.</div>
+  <div class="sub">Every line rawi has written for you, newest first, exactly as it was pasted. It stays on this computer. Search to find a line, and Copy puts it back on your clipboard.</div>
+  <div class="note histoff" hidden></div>
   <input type="search" id="q" placeholder="Search your dictations..." oninput="loadHistory()" style="width:100%;max-width:420px">
   <div id="hist" style="margin-top:14px"></div>
 </section>
 
 <section id="v-dict" class="hidden">
   <h1>Dictionary</h1>
-  <div class="sub">Rawi spells the way you do. Names it should hear, and words it should fix.</div>
+  <div class="sub">Teach rawi the words it gets wrong.</div>
   <div class="hero" style="padding:22px 26px">
     <p class="en" style="font-size:22px">Your words, <em>spelled right.</em></p>
-    <p class="p">Names go to Whisper as a hint before it listens, and to the cleaner as spellings to keep. Corrections are applied last, exactly as written.</p>
+    <p class="p"><b>Names</b> are people, places and terms you say often. rawi listens for them and spells them your way. <b>Corrections</b> are for a word it keeps writing wrong: say what it writes and what you want instead, and it swaps them every time.</p>
   </div>
   <h2>Names</h2>
   <div class="card"><div id="names-body" style="line-height:2.2"></div>
     <div class="addrow" style="margin-top:10px"><input type="text" id="newname" placeholder="Ada Lovelace"><button class="btn ghost" style="margin:0" onclick="addName()">Add name</button></div>
   </div>
   <h2>Corrections</h2>
-  <table><thead><tr><th>Heard as</th><th>Write as</th><th style="width:60px"></th></tr></thead><tbody id="pairs-body"></tbody></table>
+  <table><thead><tr><th>rawi writes</th><th>You want</th><th style="width:60px"></th></tr></thead><tbody id="pairs-body"></tbody></table>
   <div class="addrow"><input type="text" id="newwrong" placeholder="سوال"><span style="color:var(--faint)">→</span><input type="text" id="newright" placeholder="سؤال"><button class="btn ghost" style="margin:0" onclick="addPair()">Add correction</button></div>
-  <div class="hint">Saved to your config. The daemon restarts itself so the next dictation uses them.</div>
-</section>
-
-<section id="v-style" class="hidden">
-  <h1>Style</h1>
-  <div class="sub">How much of your speech reaches the page untouched.</div>
-  <div class="choices">
-    <div class="choice" id="ch-off" onclick="setStyle(false)"><h3>None</h3><p>Exactly what you said, filler and all.</p><div class="sample">اه يعني الحين نراجع الخطة امم قبل الاجتماع همم ونشوف الارقام</div></div>
-    <div class="choice" id="ch-on" onclick="setStyle(true)"><h3>Light</h3><p>Fillers out, punctuation in, your words kept.</p><div class="sample">الحين نراجع الخطة، قبل الاجتماع، ونشوف الأرقام.</div></div>
-  </div>
-  <h2>Your own examples</h2>
-  <div id="samples"></div>
+  <div class="hint" id="dictmsg">Each change is saved straight away. rawi restarts to pick it up, which takes a few seconds, longer on a laptop without a GPU.</div>
 </section>
 
 <section id="v-set" class="hidden">
   <h1>Settings</h1>
-  <div class="sub">Everything that shapes a dictation.</div>
+  <div class="sub">The switches in "Right away" apply as you click them. Everything else waits for the Save button at the bottom.</div>
+
+  <div class="sect">
+  <h2>Right away</h2>
+  <label>Keep a history</label>
+  <div class="choices" id="c-log">
+    <div class="choice" data-v="on" onclick="setLog(true)"><h3>On</h3><div>Every line is saved on this computer, in transcripts.jsonl in the rawi folder. History, Sky, Usage and Patterns are built from it.</div></div>
+    <div class="choice" data-v="off" onclick="setLog(false)"><h3>Off</h3><div>Nothing is kept after it is pasted. The stats pages stay empty.</div></div>
+  </div>
+  <label>Always listening</label>
+  <div class="choices" id="c-ear">
+    <div class="choice" data-v="off" onclick="setEar(false)"><h3>Off</h3><div>The microphone opens only while you hold the key.</div></div>
+    <div class="choice" data-v="on" onclick="setEar(true)"><h3>On <span class="kchip" style="margin-left:6px" id="c-earkey">F8</span></h3><div>The microphone stays open. Each sentence goes to your clipboard when you pause, and you paste it yourself. The same key turns it off.</div></div>
+  </div>
+  <label>When you let go</label>
+  <div class="choices" id="c-mode">
+    <div class="choice" data-v="write" onclick="setMode('write')"><h3>Paste the text</h3><div>The normal way: your words appear where your cursor is.</div></div>
+    <div class="choice" data-v="talk" onclick="setMode('talk')"><h3>Read it aloud</h3><div>rawi speaks the line back instead of pasting it. Needs the optional local voice server (see the README).</div></div>
+  </div>
+  <label>Mood emoji</label>
+  <div class="choices" id="c-read">
+    <div class="choice" data-v="auto" onclick="setRead('auto')"><h3>On</h3><div>History tags a line with one emoji when its words clearly carry a mood. No match, no emoji.</div></div>
+    <div class="choice" data-v="off" onclick="setRead('off')"><h3>Off</h3><div>Just the words.</div></div>
+  </div>
+  <div class="hint" id="nowmsg"></div>
+  </div>
+
+  <div class="sect">
+  <h2>Talking</h2>
   <label>Hold key</label>
   <select id="c-key">
     <option value="ctrl_l">Left Ctrl</option>
@@ -368,46 +468,52 @@ td .x:hover{color:var(--accent)}
     <option value="alt_l">Left Alt</option>
     <option value="caps_lock">Caps Lock</option>
   </select>
-  <label>Cleanup</label>
+  <div class="hint">Hold it to talk. Tap it twice quickly to keep recording without holding, and tap once more to finish.</div>
+  <label>Language</label>
+  <select id="c-lang"><option value="auto">Auto: work it out for each line</option><option value="ar">Always Arabic</option><option value="en">Always English</option></select>
+  <div class="hint">Auto handles a sentence that mixes both. <span class="kchip" id="c-langkey">F10</span> switches this for the moment without coming here.</div>
+  <label>Speech model</label>
+  <select id="c-model"><option value="large-v3-turbo">large-v3-turbo: best, especially for Arabic. Needs an NVIDIA GPU</option><option value="medium">medium: in between</option><option value="small">small: for laptops without a GPU. Good English, weak Arabic</option></select>
+  <div class="hint">A model you have not used before downloads once, the first time rawi starts with it.</div>
+  </div>
+
+  <div class="sect">
+  <h2>Cleanup <span class="opt">optional</span></h2>
+  <div class="explain">
+    Cleanup sends each line to a small language model running on your own computer, which takes out filler words like "umm" and "يعني" and adds punctuation. It needs an OpenAI-compatible model server running on this computer, set in config.json (the README has the details). Without it, rawi pastes exactly what it heard, which is what most people want.
+    <div class="cstat"><span class="dot" id="c-cdot"></span><span id="c-ctext">checking for a cleanup model...</span></div>
+  </div>
   <div class="choices" id="c-level">
-    <div class="choice" data-v="none" onclick="setLevel('none')"><h3>Off</h3><div>Raw transcript, exactly as heard.</div></div>
-    <div class="choice" data-v="light" onclick="setLevel('light')"><h3>Light</h3><div>Fillers out, punctuation in. Nothing else moves.</div></div>
-    <div class="choice" data-v="full" onclick="setLevel('full')"><h3>Full</h3><div>Tighten too: false starts, repeats, run-ons.</div></div>
-  </div>
-  <label>Mode</label>
-  <div class="choices" id="c-mode">
-    <div class="choice" data-v="write" onclick="setMode('write')"><h3>Dictation</h3><div>What you say becomes text to send, save, paste.</div></div>
-    <div class="choice" data-v="talk" onclick="setMode('talk')"><h3>Voice mode</h3><div>Read each line aloud through the local voice server keeps its mood, its pace, and where it was said.</div></div>
-  </div>
-  <label>Reading</label>
-  <div class="choices" id="c-read">
-    <div class="choice" data-v="auto" onclick="setRead('auto')"><h3>Read the mood</h3><div>One emoji per line, earned by the words you actually said. No match, no emoji.</div></div>
-    <div class="choice" data-v="off" onclick="setRead('off')"><h3>Off</h3><div>Keep the words and nothing else.</div></div>
-  </div>
-  <label>The ear — always listening</label>
-  <div class="choices" id="c-ear">
-    <div class="choice" data-v="off" onclick="setEar(false)"><h3>Off</h3><div>Hold the key. Nothing listens between dictations.</div></div>
-    <div class="choice" data-v="on" onclick="setEar(true)"><h3>Listening <span class="kchip" style="margin-left:6px">F8</span></h3><div>One tap opens the microphone and it stays open. A sentence ends when you stop; the line lands on your clipboard, never in a window you did not choose.</div></div>
+    <div class="choice" data-v="none" onclick="setLevel('none')"><h3>Off</h3><div>Exactly what you said, filler and all.</div><div class="sample">اه يعني الحين نراجع الخطة امم قبل الاجتماع همم ونشوف الارقام</div></div>
+    <div class="choice" data-v="light" onclick="setLevel('light')"><h3>Light</h3><div>Fillers out, punctuation in. Your words stay.</div><div class="sample">الحين نراجع الخطة، قبل الاجتماع، ونشوف الأرقام.</div></div>
+    <div class="choice" data-v="full" onclick="setLevel('full')"><h3>Full</h3><div>Also removes false starts, repeats and run-on sentences.</div></div>
   </div>
   <label>Tone</label>
   <div class="chips" id="c-tone"></div>
-  <label>Language</label>
-  <select id="c-lang"><option value="auto">Auto detect (per recording)</option><option value="ar">Arabic</option><option value="en">English</option></select>
-  <label>Model</label>
-  <select id="c-model"><option value="large-v3-turbo">large-v3-turbo (3.3 GB)</option><option value="medium">medium</option><option value="small">small</option></select>
-  <label>Names (one per line)</label>
-  <textarea id="c-names" rows="5" spellcheck="false" placeholder="Ada&#10;Katherine&#10;Grace"></textarea>
-  <label>Corrections (wrong =&gt; right, one per line)</label>
-  <textarea id="c-pairs" rows="3" spellcheck="false" placeholder="سوال =&gt; سؤال"></textarea>
-  <label>By app</label>
-  <div class="sub2">Whichever line matches the window that receives the text wins. Code gets no cleanup; mail gets a formal register.</div>
-  <div id="c-profiles"></div>
-  <label>Snippets</label>
-  <div class="sub2">Say the trigger on its own and it expands into the text.</div>
+  <div class="hint">How the cleanup model words things. It has no effect while cleanup is off.</div>
+  <details class="adv">
+    <summary>Cleanup by app</summary>
+    <div class="sub2">rawi checks which window will receive the text and uses the first row that matches it. Code gets no cleanup, so commands stay exactly as you said them.</div>
+    <div id="c-profiles"></div>
+  </details>
+  <details class="adv">
+    <summary>Before and after, on your own lines</summary>
+    <div id="samples"></div>
+  </details>
+  </div>
+
+  <div class="sect">
+  <h2>Snippets</h2>
+  <div class="sub2">Say a short trigger on its own and rawi types the full text instead. For example, say "my email" and it writes your address.</div>
   <div id="c-snips"></div>
-  <div><button class="btn ghost" onclick="addSnip()">Add a snippet</button></div>
-  <div><button class="btn" onclick="applyCfg()">Save &amp; restart daemon</button><button class="btn ghost" onclick="openFolder()">Open folder</button></div>
-  <div class="hint" id="cfgmsg"></div>
+  <div><button class="btn ghost" style="margin-left:0" onclick="addSnip()">Add a snippet</button></div>
+  </div>
+
+  <div class="savebar">
+    <button class="btn" onclick="applyCfg()">Save and restart rawi</button>
+    <button class="btn ghost" onclick="openFolder()">Open the rawi folder</button>
+    <span class="hint" id="cfgmsg">Restarting takes a few seconds, longer on a laptop without a GPU.</span>
+  </div>
 </section>
 
 </div>
@@ -425,8 +531,11 @@ function currentTheme(){ try{ return localStorage.getItem('rawi-theme')||'paper'
 function toggleTheme(){ applyTheme(currentTheme()==='night'?'paper':'night'); }
 applyTheme(currentTheme());
 
+const TABS=['home','hist','dict','set','sky','usage','voice'];
 function tab(name){
-  for(const t of ['home','voice','usage','hist','dict','style','set']){
+  if(name==='room') name='sky';           // old names still open the right page
+  if(name==='style') name='set';
+  for(const t of TABS){
     const btn=$('t-'+t); if(btn) btn.classList.toggle('on', t===name);
     const v=$('v-'+t); if(v) v.classList.toggle('hidden', t!==name);
   }
@@ -434,8 +543,65 @@ function tab(name){
   if(name==='hist') loadHistory();
   if(name==='voice') loadVoice();
   if(name==='dict') renderDict();
-  if(name==='style') loadSamples();
-  if(name==='set'){ fillCfg(); earPaint(); }
+  if(name==='sky') drawSky();
+  if(name==='set'){ fillCfg(); earPaint(); loadSamples(); }
+}
+
+/* ---------- home: is it running, how to use it, the keys, today ---------- */
+const KEYNAMES={ctrl_l:'Left Ctrl',ctrl_r:'Right Ctrl',alt_l:'Left Alt',alt_r:'Right Alt',caps_lock:'Caps Lock',
+  shift_l:'Left Shift',shift_r:'Right Shift'};
+function keyName(k){ k=String(k||''); return KEYNAMES[k] || k.toUpperCase().replace(/_/g,' '); }
+function keys(){ return Object.assign({paste:'f9',lang:'f10',talk:'f7',listen:'f8'}, CFG.keys||{}); }
+const HISTOFF='History is off, so new lines are not saved and these pages stay empty. '+
+  '<a href="#" onclick="tab(\'set\');return false">Turn on Keep a history</a> in Settings. Your lines stay on this computer.';
+function paintHistOff(){
+  document.querySelectorAll('.histoff').forEach(n=>{ n.innerHTML=HISTOFF; n.hidden=!(CFG.ok && !CFG.log); });
+}
+function renderKeys(){
+  const k=keys(), hold=keyName(CFG.hold_key||'ctrl_l');
+  const rows=[[hold+' (hold)','Talk. Let go and the text is pasted.'],
+    [hold+' twice','Keep recording without holding. Tap once more to finish.'],
+    [keyName(k.paste),'Paste the last line again, if it landed in the wrong window.'],
+    [keyName(k.lang),'Switch language: auto, then Arabic only, then English only.'],
+    [keyName(k.listen),'Always listening on or off.'],
+    [keyName(k.talk),'Read lines aloud instead of pasting. Needs the optional voice server.']];
+  $('h-keys').innerHTML = rows.map(r=>'<span><span class="kchip">'+esc(r[0])+'</span></span><span class="kd">'+esc(r[1])+'</span>').join('');
+  $('h-hold').textContent = hold;
+  if($('c-earkey')) $('c-earkey').textContent = keyName(k.listen);
+  if($('c-langkey')) $('c-langkey').textContent = keyName(k.lang);
+}
+function renderHome(s){
+  const st=s.status||{}, hold=keyName(CFG.hold_key||'ctrl_l');
+  $('h-dot').className='bdot '+(st.daemon?'live':'warn');
+  if(st.daemon){
+    $('h-title').textContent = 'rawi is ready.';
+    $('h-line').textContent = st.listening
+      ? 'Always listening is on: each sentence goes to your clipboard when you pause. Press '+keyName(keys().listen)+' to turn it off.'
+      : 'Hold '+hold+' in any app, speak, and let go. The first line after starting takes longer while the model loads. You can close this window and rawi keeps working.';
+  } else {
+    $('h-title').textContent = 'rawi is not running.';
+    $('h-line').textContent = 'Nothing gets written until it starts. Press Start, or double-click start.bat in the rawi folder to see any error.';
+  }
+  const sb=$('h-start'); sb.hidden=!!st.daemon; if(st.daemon){ sb.disabled=false; sb.textContent='Start rawi'; }
+  $('h-cleanwarn').hidden = !(CFG.ok && CFG.clean && !st.cleaner);
+  const t=s.today||{n:0,words:0}, rec=(s.recent||[]).slice(0,3);
+  if(CFG.ok && !CFG.log && !rec.length){
+    $('h-today').innerHTML = '<div class="note">History is off, so rawi forgets each line once it is pasted. '+
+      '<a href="#" onclick="tab(\'set\');return false">Turn on Keep a history</a> to see your lines here and in your stats. They stay on this computer.</div>';
+    return;
+  }
+  $('h-today').innerHTML = '<div class="card"><div class="today">'+
+    '<div><div class="k">Lines</div><div class="v">'+t.n+'</div></div>'+
+    '<div><div class="k">Words</div><div class="v">'+t.words+'</div></div>'+
+    '<div><div class="k">Speaking time</div><div class="v">'+esc(t.time||'0')+'</div></div></div>'+
+    (rec.length ? '<div class="k" style="margin-top:14px">Latest</div>'+rec.map(row).join('')
+                : '<div class="empty">Nothing yet. Click into any app, hold '+esc(hold)+' and say something.</div>')+
+    '<button class="more" onclick="tab(\'hist\')">See everything in History</button></div>';
+}
+async function startRawi(){
+  const b=$('h-start'); b.disabled=true; b.textContent='Starting...';
+  try{ await pywebview.api.restart_daemon(); }catch(e){ dlog('start fail '+e); }
+  refresh();
 }
 
 function heatLevel(n,max){
@@ -457,20 +623,35 @@ function render(s){
   $('s-lat').textContent = s.all.lat;
   $('s-langs').textContent = (s.langs||[]).map(x=>x[0]+' · '+x[1]).join('   ') || '—';
   $('dot').className = 'dot'+(s.status.daemon?' live':'');
-  $('statustext').textContent = s.status.daemon?'Daemon listening':'Daemon stopped';
-  $('dot2').className = 'dot'+(s.status.cleaner?' live':'');
-  $('cleanertext').textContent = s.status.cleaner ? 'Cleaner ready'
-      : (s.status.gpu ? 'Cleaner off · GPU: '+s.status.gpu : 'Cleaner off');
-  const max = Math.max(1, ...s.days.map(d=>d.words));
-  $('heat').innerHTML = s.days.map(d=>'<i class="'+heatLevel(d.words,max)+'" title="'+d.d+' · '+d.words+' words"></i>').join('');
+  $('statustext').textContent = s.status.daemon ? 'rawi is running' : 'rawi is not running';
+  $('earrow').hidden = !s.status.listening;
+  $('c-cdot').className = 'dot'+(s.status.cleaner?' live':'');
+  $('c-ctext').textContent = s.status.cleaner ? 'A cleanup model is running on this computer.'
+      : 'No cleanup model is running on this computer, so cleanup has nothing to use.';
+  renderHome(s);
+  renderHeat(s.days||[]);
   const apps = (s.apps||[]);
   const amax = Math.max(1, ...apps.map(a=>a.n));
   $('apps').innerHTML = apps.length ? apps.map(a=>
       '<div class="approw"><span class="an">'+esc(a.name)+'</span>'+
       '<span class="abar"><i style="width:'+Math.round(100*a.n/amax)+'%"></i></span>'+
       '<span class="ac">'+a.n+'</span></div>').join('')
-    : '<span class="empty">No app recorded yet — the next dictation records where it lands.</span>';
+    : '<span class="empty">No app recorded yet. The next line you say records where it lands.</span>';
   $('recent').innerHTML = (s.recent||[]).map(r=>row(r)).join('') || '<div class="empty">Nothing yet. Hold Left Ctrl and speak.</div>';
+}
+// the Usage calendar: one column per week (Sunday on top), month names over the first week of each month
+function renderHeat(days){
+  const max = Math.max(1, ...days.map(d=>d.words));
+  const weeks = Math.max(1, Math.ceil(days.length/7));
+  const heat=$('heat'), months=$('heatmonths');
+  heat.style.setProperty('--wk', weeks); months.style.setProperty('--wk', weeks);
+  heat.innerHTML = days.map(d=>'<i class="'+heatLevel(d.words,max)+'" title="'+esc(d.d)+' · '+d.words+' words"></i>').join('');
+  let last='', out='';
+  for(let w=0; w<weeks; w++){
+    const d=days[w*7]; const m = d && d.iso ? new Date(d.iso+'T12:00').toLocaleString('en',{month:'short'}) : '';
+    out += '<span>'+(m && m!==last && w<weeks-2 ? m : '')+'</span>'; if(m) last=m;
+  }
+  months.innerHTML = out;
 }
 function fidDot(r){
   const f = r.fid;
@@ -802,19 +983,16 @@ function addPair(){
   CFG.pairs=(CFG.pairs||[]).concat([w+' => '+r]); $('newwrong').value=''; $('newright').value=''; saveDict();
 }
 function delPair(i){ CFG.pairs.splice(i,1); saveDict(); }
+async function saveNow(patch, msgId){
+  const m=$(msgId); if(m) m.textContent='Saving, and restarting rawi so it uses this...';
+  try{
+    const r = await pywebview.api.save_config(patch);
+    if(m) m.textContent = (r&&r.message) || 'Saved.';
+  }catch(e){ if(m) m.textContent='Could not save: '+e; dlog('save fail '+e); }
+}
 async function saveDict(){
   renderDict();
-  try{ await pywebview.api.save_config({hold_key:CFG.hold_key, clean:CFG.clean, language:CFG.language, model:CFG.model, names:CFG.names, pairs:CFG.pairs}); }
-  catch(e){ dlog('save fail '+e); }
-}
-
-async function setStyle(on){
-  CFG.clean = !!on; paintStyle();
-  try{ await pywebview.api.save_config({hold_key:CFG.hold_key, clean:!!on, language:CFG.language, model:CFG.model, names:CFG.names, pairs:CFG.pairs}); }catch(e){}
-}
-function paintStyle(){
-  $('ch-on').classList.toggle('on', !!CFG.clean);
-  $('ch-off').classList.toggle('on', !CFG.clean);
+  await saveNow({names:CFG.names, pairs:CFG.pairs}, 'dictmsg');
 }
 async function loadSamples(){
   try{
@@ -823,7 +1001,7 @@ async function loadSamples(){
       '<div class="card" style="margin-bottom:10px"><div class="k">'+esc(r.when)+' · '+esc(r.lang||'')+'</div>'+
       '<div class="sample" style="margin-top:8px">'+esc(r.raw||'')+'</div>'+
       '<div class="sample" style="margin-top:6px;color:var(--text)">'+esc(r.text||'')+'</div></div>').join('')
-      : '<div class="empty">No pair of raw and cleaned text yet. Dictate a few sentences with Cleanup on.</div>';
+      : '<div class="empty">No examples yet. Once cleanup has changed some of your lines (and history is on), the before and after show up here.</div>';
   }catch(e){ dlog('samples fail '+e); }
 }
 
@@ -833,8 +1011,12 @@ function paintChoice(boxId, val){
   document.querySelectorAll('#'+boxId+' .choice').forEach(c=>c.classList.toggle('on', c.getAttribute('data-v')===val));
 }
 async function setMode(v){
-  paintChoice('c-mode', v);
-  try{ await pywebview.api.save_config({talk: v==='talk'}); }catch(e){ dlog('mode fail '+e); }
+  paintChoice('c-mode', v); CFG.talk = (v==='talk');
+  await saveNow({talk: v==='talk'}, 'nowmsg');
+}
+async function setLog(on){
+  paintChoice('c-log', on?'on':'off'); CFG.log = !!on; paintHistOff();
+  await saveNow({log: !!on}, 'nowmsg');
 }
 async function setEar(on){
   const r = await pywebview.api.listen(!!on);
@@ -850,36 +1032,34 @@ async function earPaint(){
 }
 
 async function setRead(v){
-  paintChoice('c-read', v);
-  try{ await pywebview.api.save_config({mood: v}); }catch(e){ dlog('read fail '+e); }
+  paintChoice('c-read', v); CFG.mood = v;
+  await saveNow({mood: v}, 'nowmsg');
 }
 async function fillCfg(){
   try{
     CFG = await pywebview.api.get_config();
     $('c-key').value = CFG.hold_key||'ctrl_l';
-    paintLevel(CFG.level||'light'); paintTone(CFG.tone||'default');
+    // the level shown is what the daemon will do: a stored level means nothing while cleanup is disabled
+    paintLevel(CFG.clean ? (CFG.level||'light') : 'none'); paintTone(CFG.tone||'default');
     snips_loaded=false; renderProfiles(); renderSnips();
     $('c-lang').value = CFG.language||'auto';
     $('c-model').value = CFG.model||'large-v3-turbo';
-    $('c-names').value = (CFG.names||[]).join('\n');
-    $('c-pairs').value = (CFG.pairs||[]).join('\n');
-    paintStyle(); renderDict();
+    paintChoice('c-log', CFG.log?'on':'off');
+    paintChoice('c-mode', CFG.talk?'talk':'write');
+    paintChoice('c-read', CFG.mood||'auto');
+    renderDict(); renderKeys(); paintHistOff();
   }catch(e){ dlog('cfg fail '+e); }
 }
 async function applyCfg(){
-  const patch = {hold_key:$('c-key').value, clean:(CFG.level||'light')!=='none',
-    level:CFG.level||'light', tone:CFG.tone||'default',
+  const lvl = CFG.level||'none';
+  const patch = {hold_key:$('c-key').value, clean: lvl!=='none',
+    tone:CFG.tone||'default',
     profiles:collectProfiles(), snippets:collectSnips(),
     language:$('c-lang').value,
-    model:$('c-model').value,
-    names:$('c-names').value.split('\n').map(x=>x.trim()).filter(Boolean),
-    pairs:$('c-pairs').value.split('\n').map(x=>x.trim()).filter(Boolean)};
-  $('cfgmsg').textContent = 'Saving and restarting the daemon...';
-  try{
-    const r = await pywebview.api.save_config(patch);
-    $('cfgmsg').textContent = (r&&r.message)||'Saved.';
-    CFG = await pywebview.api.get_config();
-  }catch(e){ $('cfgmsg').textContent = 'Could not save: '+e; }
+    model:$('c-model').value};
+  if(lvl!=='none') patch.level = lvl;     // turning cleanup off keeps the level for next time
+  await saveNow(patch, 'cfgmsg');
+  await fillCfg();
 }
 
 /* ---- cleanup level, tone, per-app profiles, snippets ---- */
@@ -940,12 +1120,11 @@ function boot(){
   if(window.__booted) return; window.__booted = true;
   dlog('boot');
   const _mh=(location.hash||'').replace('#','');
-  tab(['home','voice','usage','hist','dict','style','set'].includes(_mh)?_mh:'home');
-  refresh(); setInterval(refresh, 5000); skyInit();
+  tab(TABS.concat(['room','style']).includes(_mh)?_mh:'home');
+  fillCfg().then(refresh); setInterval(refresh, 5000); skyInit();
   setInterval(()=>{ const s=$('v-voice'); if(s && !s.classList.contains('hidden')) loadVoice(); }, 15000);
-  fillCfg();
-  try{ pywebview.api.get_config().then(c=>{ if(c&&c.ok){ paintChoice('c-mode', c.talk?'talk':'write'); paintChoice('c-read', c.mood||'auto'); } }); }catch(e){}
 }
+window.addEventListener('hashchange', ()=>{ const h=(location.hash||'').replace('#',''); if(h) tab(h); });
 if(window.pywebview && window.pywebview.api) boot();
 window.addEventListener('pywebviewready', boot);
 setTimeout(boot, 1800);

@@ -208,7 +208,9 @@ class Api:
             else:
                 break
 
-        days = [(today - dt.timedelta(days=i)) for i in range(41, -1, -1)]
+        # 26 whole weeks for the Usage calendar, starting on a Sunday so each row is one weekday
+        start = today - dt.timedelta(days=7 * 25 + (today.weekday() + 1) % 7)
+        days = [start + dt.timedelta(days=i) for i in range((today - start).days + 1)]
         recent = []
         for r in sorted(rows, key=lambda r: r["_dt"], reverse=True)[:12]:
             recent.append({"when": r["_dt"].strftime("%d %b %H:%M"),
@@ -228,7 +230,8 @@ class Api:
                     "lat": "%.2f" % statistics.median(lats) if lats else "0",
                     "rtf": "%.1f" % (ts / sum(lats)) if lats and sum(lats) else "0"},
             "streak": streak,
-            "days": [{"d": x.strftime("%d %b"), "words": per_day.get(x, 0)} for x in days],
+            "days": [{"d": x.strftime("%a %d %b"), "iso": x.isoformat(), "words": per_day.get(x, 0)}
+                     for x in days],
             "hours": [hours.get(h, 0) for h in range(24)],
             "langs": langs.most_common(),
             "apps": [{"name": k, "n": v} for k, v in
@@ -452,8 +455,16 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             c = {}
         d = c.get("dictionary") or {}
         cl = c.get("clean") or {}
-        return {"hold_key": c.get("hold_key", "ctrl_l"),
-                "clean": bool(cl.get("enabled", True)),
+        ls = c.get("listen") or {}
+        # defaults mirror rawi.py's DEFAULTS, so the hub shows what the daemon will actually do
+        return {"ok": True,
+                "hold_key": c.get("hold_key", "ctrl_l"),
+                "keys": {"paste": c.get("paste_key", "f9"), "lang": c.get("lang_key", "f10"),
+                         "talk": c.get("talk_key", "f7"), "listen": ls.get("key", "f8")},
+                "log": bool(c.get("log", False)),
+                "talk": bool(c.get("talk", False)),
+                "mood": c.get("mood", "auto"),
+                "clean": bool(cl.get("enabled", False)),
                 "level": cl.get("level", "light"),
                 "tone": cl.get("tone", "default"),
                 "language": c.get("language", "auto"),
@@ -467,12 +478,15 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
         try:
             c = json.load(open(CFG, encoding="utf-8"))
         except Exception:
-            return "could not read config.json"
-        c["hold_key"] = patch.get("hold_key", c.get("hold_key"))
-        c["language"] = patch.get("language", c.get("language"))
-        c["model"] = patch.get("model", c.get("model"))
+            return {"ok": False, "message": "Could not read config.json."}
+        for k in ("hold_key", "language", "model"):
+            if k in patch:
+                c[k] = patch[k]
+        if "log" in patch:
+            c["log"] = bool(patch["log"])
         cl = c.setdefault("clean", {})
-        cl["enabled"] = bool(patch.get("clean", True))
+        if "clean" in patch:              # only when asked: a mode or mood change must not switch cleanup on
+            cl["enabled"] = bool(patch["clean"])
         if patch.get("level") in ("none", "light", "full"):
             cl["level"] = patch["level"]
         if patch.get("tone"):
@@ -491,7 +505,8 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             d["pairs"] = [str(x) for x in (patch.get("pairs") or [])]
         json.dump(c, open(CFG, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
         n = self.restart_daemon()
-        return {"ok": True, "message": "Saved. Daemon restarted (%d process%s)." % (n, "" if n == 1 else "es")}
+        return {"ok": True, "message": ("Saved. rawi restarted and is loading the model." if n
+                                        else "Saved, but rawi did not start again. Run start.bat to see why.")}
 
     def stop_daemon(self):
         """Stop the Whisper daemon for real.
