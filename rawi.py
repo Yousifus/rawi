@@ -784,6 +784,10 @@ class Rawi:
         """Whisper, tuned for a man who speaks Arabic and English in the same breath.
         Arabic must come back in Arabic script. The killer bug was an English prompt on
         Arabic audio: it steered the model into writing English for what it heard."""
+        # This line's own probe only. With the language locked (F10) the probe never runs, and the
+        # second look used to read the PREVIOUS auto line's vector: a locked-English line could be
+        # re-run as Arabic on a stale 0.35 because something else had been Arabic a minute ago.
+        self.lang_probs = {}
         lang, prob = language, 1.0
         if lang is None:
             got, prob = self.pick_lang(audio)

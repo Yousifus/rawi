@@ -737,6 +737,32 @@ class TestConfiguredLanguages(unittest.TestCase):
         faint.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
         self.assertEqual(faint.model.told, [None])
 
+class TestALockedLineSeesItsOwnVector(unittest.TestCase):
+    """With the language locked (F10) no probe runs, so the second look must not read the vector
+    left behind by the previous auto line. Review of 2026-11-01, nit 1 on #8: pre-existing."""
+
+    def _rawi(self, lock):
+        with mock.patch.dict(sys.modules, {"sounddevice": types.ModuleType("sounddevice")}):
+            d = rawi.Rawi(dict(rawi.DEFAULTS, lang_lock=lock))
+        d.model = _FakeProbe([("en", 0.90), ("ar", 0.05)], texts=("hello there",))
+        d.lang_hint = None
+        d.lang_probs = {"ar": 0.90, "en": 0.05}     # what the last auto line decided on
+        return d
+
+    def test_a_locked_line_does_not_rerun_as_arabic_on_a_stale_vector(self):
+        d = self._rawi("en")
+        # the lock is resolved in _work, which then hands transcribe a language: that is why no
+        # probe runs here, and why the vector it reads must be this line's own (there is none)
+        d.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), "en")
+        # one call, in English; a stale 0.90 for Arabic must not buy a second look at Arabic
+        self.assertEqual(d.model.told, ["en"])
+
+    def test_an_unlocked_line_still_reads_the_vector_it_just_measured(self):
+        d = self._rawi("auto")
+        d.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
+        self.assertEqual(d.lang_probs.get("ar"), 0.05)   # this line's own probe, not the stale one
+
+
 class _FailingProbe(_FakeProbe):
     """A probe that raises, with a vector left over from the previous line."""
 
