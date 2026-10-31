@@ -5,6 +5,7 @@
   "compute_type": "float16",
   "device": "auto",
   "language": "auto",
+  "languages": ["ar", "en"],
   "paste": true,
   "restore_clipboard": true,
   "beeps": true,

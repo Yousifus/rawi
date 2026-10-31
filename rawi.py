@@ -112,6 +112,9 @@ DEFAULTS = {
     "compute_type": "float16",
     "device": "auto",       # auto = cuda when a CUDA device is present, else cpu int8
     "language": "auto",
+    # the languages he actually speaks. The probe weighs only these, so a short bilingual line is a
+    # choice between two, not between a hundred. A string is accepted and means one language.
+    "languages": ["ar", "en"],
     "paste": True,
     "restore_clipboard": True,
     "beeps": True,
@@ -472,6 +475,26 @@ def apply_snippets(text: str, cfg) -> str:
     return text
 
 
+LANG_FLOOR = 0.30      # a language must have heard something itself before it may win
+
+
+def _languages(cfg) -> tuple:
+    """The languages to weigh: a list, or a single string, never a list of characters."""
+    raw = (cfg or {}).get("languages")
+    if raw is None:
+        return ("ar", "en")
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)):
+        return ("ar", "en")
+    out = []
+    for x in raw:
+        code = str(x).strip().lower()
+        if code and code not in out:
+            out.append(code)
+    return tuple(out) or ("ar", "en")
+
+
 def dict_terms(cfg):
     d = cfg.get("dictionary") or {}
     names = [str(x).strip() for x in (d.get("names") or []) if str(x).strip()]
@@ -584,6 +607,7 @@ class Rawi:
     def pick_lang(self, audio):
         """Ask the encoder what it hears before deciding how to write it. A short line
         from a bilingual speaker is exactly where a blind auto-detect gets it wrong."""
+        self.lang_probs = {}       # a failed probe must not decide this line from the last one's
         try:
             lang, prob, allp = self.model.detect_language(audio, language_detection_segments=2)
             self.lang_probs = dict(allp or [])
@@ -611,7 +635,25 @@ class Rawi:
         lang, prob = language, 1.0
         if lang is None:
             got, prob = self.pick_lang(audio)
-            need = 0.85 if self.lang_hint else 0.60   # a man mid-conversation keeps his language
+            # He speaks two languages, so weigh only those two: a probe that spreads itself over
+            # look-alikes (ar/fa/ur, en/nl) still says which of HIS languages it heard. A raw
+            # "en 0.51" with the rest on strangers is a clear English line, not a coin toss.
+            pair = _languages(self.cfg)
+            two = {x: float(self.lang_probs.get(x) or 0.0) for x in pair}
+            total = sum(two.values())
+            best = max(two, key=two.get) if two else None
+            best_raw = two.get(best) or 0.0
+            # Only a language that itself heard something may win. Arabic spread thinly over
+            # fa/ur with a little en on top renormalises to a loud "en" while English heard
+            # almost nothing, and forcing it made Whisper translate Arabic into English.
+            if total > 0.05 and best_raw >= LANG_FLOOR:
+                got, prob = best, best_raw / total
+            else:
+                got, prob = None, (best_raw / total if total > 0.05 else 0.0)
+            # a man mid-conversation keeps his language; switching needs 0.75 of the two-way
+            # weight (it was 0.85 of the raw one, which a real accented "hello" never reached,
+            # so English was forced through Arabic and came back translated: «مرحباً»)
+            need = 0.75 if self.lang_hint and got != self.lang_hint else 0.60
             if prob >= need and got:
                 lang = got
             elif self.lang_hint:
@@ -634,6 +676,8 @@ class Rawi:
         if wrote == "en":
             no_arabic = not any("\u0600" <= ch <= "\u06FF" for ch in text)
             roman = [w for w in self.ROMAN_AR if w in text.lower()]
+            # Raw, not two-way, on purpose: this is the last look for Arabic among the letters,
+            # not a re-run of the decision above, and the two thresholds live on different scales.
             ar_runner = float(self.lang_probs.get("ar") or 0.0)
             en_stop = sum(1 for w in re.findall(r"[a-z']+", text.lower()) if w in self.EN_STOP)
             if no_arabic and (roman or (ar_runner >= 0.35 and en_stop <= 2)):
@@ -653,10 +697,11 @@ class Rawi:
                     print(f"[rawi] second look: stayed english (markers={roman[:2]}, "
                           f"runner={ar_runner:.2f}, en_stop={en_stop})", flush=True)
         text = apply_dictionary(text, self.cfg)
-        if wrote in ("ar", "en") and (prob >= 0.60 or lang is not None):
+        if wrote in _languages(self.cfg) and (prob >= 0.60 or lang is not None):
             self.lang_hint = wrote
         self.last_lang = (lang, round(prob, 2))
-        print(f"[rawi] wrote as {wrote} (probe {prob:.2f})", flush=True)
+        heard = " ".join(f"{x} {float(self.lang_probs.get(x) or 0):.2f}" for x in _languages(self.cfg))
+        print(f"[rawi] wrote as {wrote} (probe {prob:.2f}; raw {heard}; hint {self.lang_hint})", flush=True)
         return text, (wrote or "?"), float(getattr(info, "duration", 0.0) or 0.0)
 
     # ---------- the ear ----------
