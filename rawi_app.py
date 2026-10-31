@@ -69,10 +69,10 @@ def pid_alive(pid: int) -> bool:
             return True
         except Exception:
             return False
-        # a daemon this hub started and that has exited stays a zombie until reaped
-        st = subprocess.run(["ps", "-o", "stat=", "-p", str(int(pid))],
-                            capture_output=True, text=True).stdout.strip()
-        return bool(st) and not st.startswith("Z")
+        # a daemon this hub started and that has exited stays a zombie until reaped.
+        # a missing or hung ps must not raise or block the hub poll forever.
+        from rawi_ps import ps_pid_alive
+        return ps_pid_alive(int(pid))
     try:
         import ctypes
         k = ctypes.windll.kernel32

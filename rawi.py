@@ -87,10 +87,10 @@ def pid_alive(pid: int) -> bool:
         except Exception:
             return False
         # a zombie (exited, not yet reaped: the hub never waits on the daemon it starts)
-        # still answers kill(pid, 0), and would block the next daemon from starting
-        st = subprocess.run(["ps", "-o", "stat=", "-p", str(int(pid))],
-                            capture_output=True, text=True).stdout.strip()
-        return bool(st) and not st.startswith("Z")
+        # still answers kill(pid, 0), and would block the next daemon from starting.
+        # a missing or hung ps must not raise or block this check forever.
+        from rawi_ps import ps_pid_alive
+        return ps_pid_alive(int(pid))
     try:
         import ctypes
         k = ctypes.windll.kernel32
@@ -996,16 +996,25 @@ class Rawi:
     def _paste_mac(self, text: str):
         """The pasteboard directly, every type of every item. pyperclip sees only text: with a
         screenshot on the clipboard it saved "" and put "" back, wiping the image, and if a busy
-        app (Claude, mid-answer) read its Cmd+V after that, it pasted nothing at all."""
-        from AppKit import NSPasteboard, NSPasteboardTypeString
-        pb = NSPasteboard.generalPasteboard()
+        app (Claude, mid-answer) read its Cmd+V after that, it pasted nothing at all.
+
+        Two pastes inside restore_delay share one snapshot of the user's clipboard. The second
+        must not photograph the line the first paste left on the board."""
+        string_type = _pasteboard_string_type()
+        pb = _mac_pasteboard()
         saved = None
+        ours = None
+        gen = 0
         if self.cfg["restore_clipboard"]:
-            saved = [[(t, item.dataForType_(t)) for t in item.types()]
-                     for item in (pb.pasteboardItems() or [])]
-        pb.clearContents()
-        pb.setString_forType_(text, NSPasteboardTypeString)
-        ours = pb.changeCount()
+            with _clip_lock:
+                saved = _saved_for_paste(pb)
+                pb.clearContents()
+                pb.setString_forType_(text, string_type)
+                ours = pb.changeCount()
+                gen = _arm_restore(ours)
+        else:
+            pb.clearContents()
+            pb.setString_forType_(text, string_type)
         time.sleep(0.05)
         self.injecting = True
         try:
@@ -1015,28 +1024,82 @@ class Rawi:
             self.injecting = False
         if saved is not None:
             delay = float(self.cfg.get("restore_delay") or 1.5)
-            threading.Thread(target=_restore_pasteboard, args=(saved, ours, delay), daemon=True).start()
+            threading.Thread(target=_restore_pasteboard,
+                             args=(saved, ours, delay, gen), daemon=True).start()
 
 
-def _restore_pasteboard(saved, ours: int, delay: float) -> None:
+# While a restore is pending, the pasteboard holds a line we placed. Remember the user's
+# snapshot and the change count of that line so a second paste does not save our own text.
+_clip_lock = threading.Lock()
+_clip_saved = None
+_clip_ours = None
+_clip_gen = 0
+
+
+def _mac_pasteboard():
+    from AppKit import NSPasteboard
+    return NSPasteboard.generalPasteboard()
+
+
+def _new_pasteboard_item():
+    from AppKit import NSPasteboardItem
+    return NSPasteboardItem.alloc().init()
+
+
+def _pasteboard_string_type():
+    from AppKit import NSPasteboardTypeString
+    return NSPasteboardTypeString
+
+
+def _snapshot_pasteboard(pb):
+    return [[(t, item.dataForType_(t)) for t in item.types()]
+            for item in (pb.pasteboardItems() or [])]
+
+
+def _saved_for_paste(pb):
+    """Snapshot the board only when it is not still a line we placed."""
+    global _clip_saved
+    if _clip_ours is not None and pb.changeCount() == _clip_ours and _clip_saved is not None:
+        return _clip_saved
+    saved = _snapshot_pasteboard(pb)
+    _clip_saved = saved
+    return saved
+
+
+def _arm_restore(ours: int) -> int:
+    """Supersede a pending restore. The older thread must not write a dictated line back."""
+    global _clip_ours, _clip_gen
+    _clip_ours = ours
+    _clip_gen += 1
+    return _clip_gen
+
+
+def _restore_pasteboard(saved, ours: int, delay: float, gen: int) -> None:
     """Put the old clipboard back once a slow app has surely read the paste, and only if the
-    clipboard still holds our line: if he copied something since, that wins."""
+    clipboard still holds our line: if he copied something since, that wins.
+    A newer paste supersedes this restore."""
+    global _clip_saved, _clip_ours
     time.sleep(delay)
     try:
-        from AppKit import NSPasteboard, NSPasteboardItem
-        pb = NSPasteboard.generalPasteboard()
-        if pb.changeCount() != ours:
-            return
-        items = []
-        for types in saved:
-            item = NSPasteboardItem.alloc().init()
-            for t, data in types:
-                if data is not None:
-                    item.setData_forType_(data, t)
-            items.append(item)
-        pb.clearContents()
-        if items:
-            pb.writeObjects_(items)
+        with _clip_lock:
+            if gen != _clip_gen:
+                return
+            pb = _mac_pasteboard()
+            if pb.changeCount() != ours:
+                return
+            items = []
+            for types in saved:
+                item = _new_pasteboard_item()
+                for t, data in types:
+                    if data is not None:
+                        item.setData_forType_(data, t)
+                items.append(item)
+            pb.clearContents()
+            if items:
+                pb.writeObjects_(items)
+            if gen == _clip_gen:
+                _clip_saved = None
+                _clip_ours = None
     except Exception as e:
         print(f"[rawi] clipboard restore failed ({type(e).__name__}: {e})", flush=True)
 

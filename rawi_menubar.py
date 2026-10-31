@@ -48,8 +48,9 @@ def daemon_pid() -> int:
         os.kill(pid, 0)
     except Exception:
         return 0
-    st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout
-    return pid if st.strip() and not st.strip().startswith("Z") else 0     # a zombie is not running
+    # a missing or hung ps counts the pid as running: kill already succeeded
+    from rawi_ps import ps_pid_alive
+    return pid if ps_pid_alive(pid) else 0     # a zombie is not running
 
 
 def hub_pid() -> int:
