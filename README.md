@@ -3,6 +3,9 @@
 **Local-first dictation.** Hold a key, speak Arabic or English, and the words land in whatever you were
 typing into — transcribed on your own machine, by your own GPU.
 
+**Website: [rawi-dictation.vercel.app](https://rawi-dictation.vercel.app)**, in English and العربية: what it is, a short demo, and a
+step-by-step install.
+
 `rawi` (راوي) means *narrator*. The premise is simple: your voice is yours. Nothing is uploaded, there
 is no account, and no service decides when you may speak.
 
@@ -164,6 +167,7 @@ app.html           the hub's UI (two themes)
 voice_out.py       optional: a resident Kokoro TTS server for voice mode
 tests/             unit tests (stdlib unittest)
 docs/screens/      the screenshots above
+site/              the landing page (static, bilingual), deployed at rawi-dictation.vercel.app
 ARCHITECTURE.md    how a sentence travels from your mouth to the cursor
 ```
 

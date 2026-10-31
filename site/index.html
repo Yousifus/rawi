@@ -1,0 +1,519 @@
+<!doctype html>
+<!-- rawi landing page: what rawi is, a short demo, how to install it, and its honest limits. Bilingual (EN / AR with RTL), static, no analytics, loads nothing from third parties. -->
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rawi · راوي · Arabic and English dictation, on your own computer</title>
+<meta name="description" content="Hold a key, speak Arabic, English or both, and rawi types it into whatever app you're in. Free, open source, and fully local: no account, nothing leaves your computer.">
+<meta property="og:title" content="rawi · راوي">
+<meta property="og:description" content="Hold a key, speak Arabic, English or both, and it's written wherever your cursor is. Free, and it runs entirely on your own computer.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://rawi-dictation.vercel.app/">
+<meta property="og:image" content="https://rawi-dictation.vercel.app/img/hub-usage.png">
+<link rel="canonical" href="https://rawi-dictation.vercel.app/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%238f2f1f'/%3E%3Ctext x='32' y='44' font-size='38' text-anchor='middle' fill='%23f6efe3' font-family='serif'%3E%D8%B1%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root {
+  --paper: #f6efe3;
+  --paper-2: #eee5d6;
+  --card: #fdf9f2;
+  --line: #e2d5bf;
+  --ink: #1f1a15;
+  --muted: #7a6a57;
+  --brick: #8f2f1f;
+  --brick-soft: #b5543f;
+  --gold: #d9a441;
+  --night: #0d0a08;
+  --night-ink: #efe6d8;
+  --display: "Instrument Serif", "Amiri", Georgia, serif;
+  --body: "Schibsted Grotesk", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #14100d;
+    --paper-2: #1c1713;
+    --card: #1f1915;
+    --line: #3a3027;
+    --ink: #efe6d8;
+    --muted: #a8977f;
+    --brick: #d26a50;
+    --brick-soft: #e08a72;
+  }
+}
+html.is-ar {
+  --display: "Amiri", "Instrument Serif", serif;
+  --body: "IBM Plex Sans Arabic", "Schibsted Grotesk", system-ui, sans-serif;
+}
+html:not(.is-ar) .ar, html.is-ar .en { display: none !important; }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 17px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+html.is-ar body { font-size: 18px; line-height: 1.8; }
+a { color: var(--brick); text-underline-offset: 3px; }
+a:hover { color: var(--brick-soft); }
+:focus-visible { outline: 2px solid var(--brick); outline-offset: 3px; border-radius: 6px; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+@media (max-width: 600px) { .wrap { padding: 0 16px; } }
+
+/* top bar */
+.top { display: flex; align-items: center; gap: 16px; padding: 20px 0; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); margin-inline-end: auto; }
+.mark {
+  width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center;
+  background: linear-gradient(160deg, #a8402b, #7a2416); color: #f6efe3;
+  font: 700 22px/1 "Amiri", serif; padding-bottom: 4px;
+}
+.brand b { font: 400 26px/1 var(--display); letter-spacing: .01em; }
+.brand small { display: block; font: 600 10.5px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 5px; }
+html.is-ar .brand small { letter-spacing: 0; font-size: 12px; text-transform: none; }
+.lang-btn, .gh {
+  font: 600 14px/1 var(--body); color: var(--ink); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer; text-decoration: none;
+}
+.lang-btn:hover, .gh:hover { border-color: var(--brick); color: var(--brick); }
+.lang-btn .ar { font-family: "IBM Plex Sans Arabic", sans-serif; }
+
+/* hero */
+.hero { padding: 48px 0 24px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; }
+@media (max-width: 860px) { .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 24px; } }
+.eyebrow { font: 600 12px/1.4 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 18px; }
+html.is-ar .eyebrow { letter-spacing: 0; font-size: 14px; }
+h1 { font: 400 clamp(44px, 7vw, 76px)/1.02 var(--display); margin: 0 0 22px; letter-spacing: -.01em; }
+html.is-ar h1 { line-height: 1.35; letter-spacing: 0; font-size: clamp(40px, 6.4vw, 66px); }
+h1 em { color: var(--brick); font-style: italic; }
+html.is-ar h1 em { font-style: normal; }
+.lede { font-size: 19px; color: var(--ink); max-width: 34em; margin: 0 0 28px; }
+html.is-ar .lede { font-size: 19px; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; text-decoration: none; cursor: pointer;
+  font: 600 16px/1 var(--body); padding: 15px 22px; border-radius: 12px; border: 1px solid transparent;
+}
+.btn.primary { background: var(--brick); color: #fbf5ec; }
+.btn.primary:hover { background: var(--brick-soft); color: #fff; }
+.btn.ghost { border-color: var(--line); color: var(--ink); background: var(--card); }
+.btn.ghost:hover { border-color: var(--brick); color: var(--brick); }
+.fine { font-size: 14px; color: var(--muted); margin: 16px 0 0; }
+
+/* demo */
+.demo {
+  background: var(--night); color: var(--night-ink); border-radius: 22px; padding: 22px;
+  box-shadow: 0 30px 60px -30px rgba(60, 25, 10, .45); position: relative;
+  border: 1px solid transparent;
+}
+@media (prefers-color-scheme: dark) { .demo { border-color: var(--line); } }
+.modes { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.mode {
+  font: 600 13px/1.2 var(--body); color: #cbbca6; background: transparent; cursor: pointer;
+  border: 1px solid #3a2f26; border-radius: 999px; padding: 8px 12px; text-align: start;
+}
+.mode[aria-pressed="true"] { background: var(--gold); border-color: var(--gold); color: #1d1408; }
+.mode small { display: block; font-weight: 400; opacity: .8; margin-top: 2px; }
+.win { background: #f8f2e8; color: #1f1a15; border-radius: 12px; overflow: hidden; }
+.win-bar { display: flex; align-items: center; gap: 6px; padding: 9px 12px; background: #ebe1d0; font: 600 12px/1 var(--body); color: #7a6a57; }
+.win-bar i { width: 9px; height: 9px; border-radius: 50%; background: #cdbfa8; display: inline-block; }
+.win-bar span { margin-inline-start: 8px; }
+.doc { min-height: 170px; padding: 14px 16px 18px; font: 400 16px/1.7 "Schibsted Grotesk", "IBM Plex Sans Arabic", sans-serif; }
+.doc p { margin: 0 0 6px; unicode-bidi: plaintext; text-align: start; }
+.doc p.new { animation: land .35s ease-out; }
+@keyframes land { from { background: rgba(217, 164, 65, .45); } to { background: transparent; } }
+.caret { display: inline-block; width: 2px; height: 1.1em; background: #8f2f1f; vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.under { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; min-height: 46px; flex-wrap: wrap; }
+.keycap {
+  font: 600 14px/1 var(--mono); color: #efe6d8; background: #2a221c; border: 1px solid #4a3d32;
+  border-bottom-width: 4px; border-radius: 8px; padding: 10px 16px; transition: transform .08s, border-bottom-width .08s, background .15s;
+}
+.keycap.down { transform: translateY(3px); border-bottom-width: 1px; background: #8f2f1f; border-color: #b5543f; }
+.keyhint { font-size: 13px; color: #a8977f; margin-inline-start: 10px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 999px;
+  background: #1f1915; border: 1px solid #3a3027; font: 600 13px/1 var(--body); color: #efe6d8;
+  opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s;
+}
+.pill.on { opacity: 1; transform: none; }
+.bars { display: inline-flex; gap: 3px; align-items: center; height: 16px; }
+.bars b { width: 3px; height: 4px; border-radius: 2px; background: var(--gold); }
+.pill.listening .bars b { animation: wave .7s ease-in-out infinite; }
+.bars b:nth-child(2) { animation-delay: .1s !important; } .bars b:nth-child(3) { animation-delay: .2s !important; }
+.bars b:nth-child(4) { animation-delay: .3s !important; } .bars b:nth-child(5) { animation-delay: .15s !important; }
+@keyframes wave { 50% { height: 16px; } }
+.pill.writing .bars b { background: #7a6a57; }
+.pill.done .bars b { background: #5fae7f; }
+.timer { font-family: var(--mono); font-weight: 400; color: #cbbca6; }
+.demo-note { font-size: 12.5px; color: #a8977f; margin: 16px 0 0; line-height: 1.5; }
+.replay { background: none; border: 0; color: var(--gold); font: 600 12.5px/1 var(--body); cursor: pointer; padding: 0; margin-inline-start: 6px; text-decoration: underline; text-underline-offset: 3px; }
+
+/* sections */
+section { padding: 64px 0 8px; }
+h2 { font: 400 clamp(32px, 4.4vw, 46px)/1.1 var(--display); margin: 0 0 10px; }
+html.is-ar h2 { line-height: 1.4; }
+.sub { color: var(--muted); margin: 0 0 30px; max-width: 40em; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 940px) { .grid4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .grid4 { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+.card h3 { font: 600 17px/1.3 var(--body); margin: 0 0 8px; }
+.card p { margin: 0; font-size: 15.5px; color: var(--muted); }
+html.is-ar .card p { font-size: 16.5px; }
+kbd { font: 500 .85em/1 var(--mono); background: var(--paper-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; color: var(--ink); white-space: nowrap; }
+
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 760px) { .shots { grid-template-columns: 1fr; } }
+figure { margin: 0; }
+figure img { width: 100%; height: auto; display: block; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 18px 40px -28px rgba(60, 25, 10, .5); }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; }
+
+/* install */
+.need { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; padding: 0; list-style: none; }
+.need li { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-size: 14.5px; }
+ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; display: grid; gap: 14px; }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 40px 1fr; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+ol.steps > li::before {
+  content: counter(s); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--brick); color: #fbf5ec; font: 600 15px/1 var(--body);
+}
+.steps h3 { font: 600 17px/1.3 var(--body); margin: 4px 0 6px; }
+.steps p { margin: 0 0 10px; color: var(--muted); font-size: 15.5px; }
+.steps p:last-child { margin-bottom: 0; }
+.code { position: relative; margin: 6px 0 10px; direction: ltr; }
+.code pre {
+  margin: 0; background: var(--night); color: #efe6d8; border-radius: 10px; padding: 14px 16px; padding-inline-end: 76px;
+  font: 400 14px/1.65 var(--mono); overflow-x: auto; direction: ltr; text-align: left;
+}
+.code .c { color: #8f8170; }
+.copy {
+  position: absolute; top: 8px; inset-inline-end: 8px; font: 600 12px/1 var(--body); cursor: pointer;
+  background: #2a221c; color: #efe6d8; border: 1px solid #4a3d32; border-radius: 7px; padding: 7px 10px;
+}
+.copy:hover { border-color: var(--gold); }
+code { font: 500 .9em var(--mono); direction: ltr; unicode-bidi: isolate; }
+
+/* limits */
+.limits { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .limits { grid-template-columns: 1fr; } }
+.limit { border-inline-start: 3px solid var(--brick); background: var(--card); border-radius: 0 14px 14px 0; padding: 16px 18px; }
+html.is-ar .limit { border-radius: 14px 0 0 14px; }
+.limit h3 { font: 600 16.5px/1.35 var(--body); margin: 0 0 6px; }
+.limit p { margin: 0; color: var(--muted); font-size: 15.5px; }
+.privacy { margin-top: 26px; background: var(--paper-2); border-radius: 16px; padding: 20px 22px; }
+.privacy h3 { margin: 0 0 6px; font: 600 17px/1.3 var(--body); }
+.privacy p { margin: 0; color: var(--muted); }
+
+footer { margin-top: 72px; padding: 28px 0 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14.5px; }
+footer .row { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="brand" href="#" aria-label="rawi">
+    <span class="mark" aria-hidden="true">ر</span>
+    <span><b>rawi <span lang="ar">· راوي</span></b>
+      <small><span class="en">your voice, written</span><span class="ar" lang="ar">كلامك يصير كتابة</span></small></span>
+  </a>
+  <button class="lang-btn" id="lang" type="button" aria-label="Switch language">
+    <span class="en" lang="ar">عربي</span><span class="ar">English</span>
+  </button>
+  <a class="gh" href="https://github.com/Yousifus/rawi">GitHub</a>
+</header>
+
+<main>
+<div class="hero">
+  <div>
+    <p class="eyebrow"><span class="en">Dictation for Windows · Arabic and English</span><span class="ar" lang="ar">إملاء صوتي لويندوز · عربي وإنجليزي</span></p>
+    <h1 class="en">Hold the key. <em>Speak.</em> It's already written.</h1>
+    <h1 class="ar" lang="ar">اضغط وتكلّم، <em>وكلامك يصير كتابة.</em></h1>
+    <p class="lede en">rawi (راوي, the narrator) types what you say into whatever app you're in: WhatsApp, Word, Slack, your browser. Arabic, English, or both in the same sentence. It runs entirely on your own computer, so it's free, there's no account, and your voice never leaves your machine.</p>
+    <p class="lede ar" lang="ar">راوي يكتب اللي تقوله في أي برنامج فاتحه: واتساب، وورد، سلاك، المتصفح. عربي أو إنجليزي، أو الاثنين في نفس الجملة. يشتغل كله على جهازك، يعني مجاني، بدون حساب، وصوتك ما يطلع من جهازك أبدًا.</p>
+    <div class="ctas">
+      <a class="btn primary" href="#install"><span class="en">Get it</span><span class="ar" lang="ar">حمّله</span></a>
+      <a class="btn ghost" href="#limits"><span class="en">What to expect</span><span class="ar" lang="ar">وش تتوقع منه</span></a>
+    </div>
+    <p class="fine"><span class="en">Free and open source (MIT) · Windows 10 and 11 · Needs Python</span><span class="ar" lang="ar">مجاني ومفتوح المصدر (MIT) · ويندوز 10 و 11 · يحتاج بايثون</span></p>
+  </div>
+
+  <div class="demo" id="demo" aria-label="Animated illustration of rawi">
+    <div class="modes" role="group" aria-label="Computer type">
+      <button class="mode" type="button" data-mode="gpu" aria-pressed="true">
+        <span class="en">PC with an NVIDIA GPU</span><span class="ar" lang="ar">جهاز فيه كرت NVIDIA</span>
+        <small><span class="en">under a second per line</span><span class="ar" lang="ar">أقل من ثانية للسطر</span></small>
+      </button>
+      <button class="mode" type="button" data-mode="cpu" aria-pressed="false">
+        <span class="en">Laptop, no GPU</span><span class="ar" lang="ar">لابتوب بدون كرت</span>
+        <small><span class="en">8 to 11 seconds per line</span><span class="ar" lang="ar">من 8 إلى 11 ثانية للسطر</span></small>
+      </button>
+    </div>
+    <div class="win" aria-hidden="true">
+      <div class="win-bar"><i></i><i></i><i></i><span class="en">Any app</span><span class="ar" lang="ar">أي برنامج</span></div>
+      <div class="doc" id="doc"><p id="cursorline"><span class="caret"></span></p></div>
+    </div>
+    <div class="under" aria-hidden="true">
+      <div><span class="keycap" id="key">Ctrl</span><span class="keyhint"><span class="en">hold to talk</span><span class="ar" lang="ar">اضغط مطوّل وتكلّم</span></span></div>
+      <div class="pill" id="pill"><span class="bars"><b></b><b></b><b></b><b></b><b></b></span><span id="pilltext"></span><span class="timer" id="timer"></span></div>
+    </div>
+    <p class="demo-note">
+      <span class="en">An illustration of the flow, not a screen recording. The waits are rawi's own numbers: under a second with a GPU, 8 to 11 seconds a line measured on a laptop CPU.</span>
+      <span class="ar" lang="ar">هذا رسم توضيحي للفكرة، مو تسجيل شاشة. أوقات الانتظار من أرقام راوي نفسه: أقل من ثانية مع كرت شاشة، ومن 8 إلى 11 ثانية للسطر على معالج لابتوب.</span>
+      <button class="replay" id="replay" type="button"><span class="en">Replay</span><span class="ar" lang="ar">أعد</span></button>
+    </p>
+  </div>
+</div>
+
+<section id="what">
+  <h2><span class="en">What it does</span><span class="ar" lang="ar">وش يسوي</span></h2>
+  <p class="sub"><span class="en">One line in, one paste out. That's the whole idea.</span><span class="ar" lang="ar">تقول جملة، تنكتب. هذي الفكرة كلها.</span></p>
+  <div class="grid4">
+    <div class="card">
+      <h3><span class="en">Hold to talk</span><span class="ar" lang="ar">اضغط وتكلّم</span></h3>
+      <p class="en">Hold the left <kbd>Ctrl</kbd>, speak, let go. The words land where your cursor is. Double-tap <kbd>Ctrl</kbd> to keep it listening hands-free.</p>
+      <p class="ar" lang="ar">اضغط <kbd>Ctrl</kbd> اليسار مطوّل، تكلّم، وارفع إصبعك. الكلام ينكتب مكان المؤشر. ضغطتين سريعة على <kbd>Ctrl</kbd> وتقدر تتكلم بدون ما تمسكه.</p>
+    </div>
+    <div class="card">
+      <h3><span class="en">Arabic and English, mixed</span><span class="ar" lang="ar">عربي وإنجليزي مع بعض</span></h3>
+      <p class="en">It works out which language each line is in, and doesn't flip halfway through your sentence. <kbd>F10</kbd> locks it to one language when you want.</p>
+      <p class="ar" lang="ar">يعرف لغة كل جملة بنفسه، وما يقلب اللغة في نص كلامك. وإذا تبي لغة وحدة بس، <kbd>F10</kbd> يثبتها.</p>
+    </div>
+    <div class="card">
+      <h3><span class="en">Works in any app</span><span class="ar" lang="ar">في أي برنامج</span></h3>
+      <p class="en">It pastes at the cursor and puts your clipboard back afterwards. Landed in the wrong window? <kbd>F9</kbd> pastes the last line again.</p>
+      <p class="ar" lang="ar">يلصق الكلام مكان المؤشر ويرجّع الحافظة مثل ما كانت. انكتب في النافذة الغلط؟ <kbd>F9</kbd> يلصق آخر جملة مرة ثانية.</p>
+    </div>
+    <div class="card">
+      <h3><span class="en">Stays on your computer</span><span class="ar" lang="ar">يبقى على جهازك</span></h3>
+      <p class="en">It uses OpenAI's open Whisper model, running on your own machine. No account, no subscription, no uploads. History is off unless you turn it on.</p>
+      <p class="ar" lang="ar">يستخدم نموذج Whisper المفتوح من OpenAI، شغّال على جهازك أنت. بدون حساب، بدون اشتراك، وما يرفع شي. السجل مقفل إلا إذا شغّلته.</p>
+    </div>
+  </div>
+</section>
+
+<section id="look">
+  <h2><span class="en">The hub</span><span class="ar" lang="ar">الواجهة</span></h2>
+  <p class="sub"><span class="en">rawi works without ever opening a window. If you want one, there's a hub with your history, a dictionary for names it should spell right, usage, and settings.</span><span class="ar" lang="ar">راوي يشتغل بدون ما تفتح أي نافذة. وإذا تبي، فيه واجهة فيها السجل، وقاموس للأسماء اللي تبيه يكتبها صح، والاستخدام، والإعدادات.</span></p>
+  <div class="shots">
+    <figure>
+      <img src="img/hub-usage.png" width="1080" height="780" loading="lazy" alt="The rawi hub on the Usage page: words today, dictations, and which apps you wrote in.">
+      <figcaption><span class="en">Usage: how much you said today, and where it went.</span><span class="ar" lang="ar">الاستخدام: كم تكلمت اليوم، ووين انكتب.</span></figcaption>
+    </figure>
+    <figure>
+      <img src="img/hub-room.png" width="1080" height="780" loading="lazy" alt="The rawi hub on the Room page: each dictation today drawn as a star.">
+      <figcaption><span class="en">The Room: every line you said today is a star.</span><span class="ar" lang="ar">الغرفة: كل جملة قلتها اليوم نجمة.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="install">
+  <h2><span class="en">Get it running</span><span class="ar" lang="ar">شغّله على جهازك</span></h2>
+  <p class="sub"><span class="en">There's no installer yet, so this takes about ten minutes and a terminal. Each step is copy and paste.</span><span class="ar" lang="ar">ما فيه مثبّت جاهز للحين، فتحتاج تقريبًا عشر دقايق وشاشة الأوامر (Terminal). كل خطوة نسخ ولصق.</span></p>
+  <ul class="need">
+    <li><span class="en">Windows 10 or 11</span><span class="ar" lang="ar">ويندوز 10 أو 11</span></li>
+    <li><span class="en">Python 3.10 to 3.12</span><span class="ar" lang="ar">بايثون من 3.10 إلى 3.12</span></li>
+    <li><span class="en">A microphone</span><span class="ar" lang="ar">مايك</span></li>
+    <li><span class="en">0.5 GB free for the small model, about 1.5 GB for the large one</span><span class="ar" lang="ar">نص جيجا للنموذج الصغير، وحوالي 1.5 جيجا للكبير</span></li>
+    <li><span class="en">NVIDIA GPU: optional, much faster</span><span class="ar" lang="ar">كرت NVIDIA: اختياري، بس أسرع بكثير</span></li>
+  </ul>
+  <ol class="steps">
+    <li><div>
+      <h3><span class="en">Install Python</span><span class="ar" lang="ar">ثبّت بايثون</span></h3>
+      <p class="en">From <a href="https://www.python.org/downloads/windows/">python.org</a>, version 3.12. In the installer, tick <b>"Add python.exe to PATH"</b> before you click Install.</p>
+      <p class="ar" lang="ar">من <a href="https://www.python.org/downloads/windows/">python.org</a>، نسخة 3.12. في المثبّت، فعّل خيار <b dir="ltr">"Add python.exe to PATH"</b> قبل ما تضغط Install.</p>
+    </div></li>
+    <li><div>
+      <h3><span class="en">Download rawi</span><span class="ar" lang="ar">حمّل راوي</span></h3>
+      <p class="en"><a href="https://github.com/Yousifus/rawi/archive/refs/heads/main.zip">Download the ZIP</a> and unzip it somewhere you'll keep it, like your Documents folder. Or, if you use git:</p>
+      <p class="ar" lang="ar"><a href="https://github.com/Yousifus/rawi/archive/refs/heads/main.zip">حمّل ملف ZIP</a> وفكّه في مكان بتخليه فيه، مثل مجلد المستندات. أو إذا تستخدم git:</p>
+      <div class="code"><pre>git clone https://github.com/Yousifus/rawi.git</pre></div>
+    </div></li>
+    <li><div>
+      <h3><span class="en">Install what it needs</span><span class="ar" lang="ar">ثبّت اللي يحتاجه</span></h3>
+      <p class="en">Open the rawi folder, right-click an empty spot, and choose <b>Open in Terminal</b>. Then paste:</p>
+      <p class="ar" lang="ar">افتح مجلد راوي، اضغط بالزر اليمين في مكان فاضي، واختر <b dir="ltr">Open in Terminal</b>. بعدين الصق:</p>
+      <div class="code"><pre>python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy config.example.json config.json</pre></div>
+    </div></li>
+    <li><div>
+      <h3><span class="en">No NVIDIA GPU? Use the small model</span><span class="ar" lang="ar">ما عندك كرت NVIDIA؟ استخدم النموذج الصغير</span></h3>
+      <p class="en">Most laptops are in this group. Open <code>config.json</code> in Notepad and change these two lines, or rawi will try a large model that's far too slow without a GPU:</p>
+      <p class="ar" lang="ar">أغلب اللابتوبات كذا. افتح <code>config.json</code> في المفكرة (Notepad) وغيّر هالسطرين، وإلا راوي بيحاول يشغّل النموذج الكبير وهو بطيء جدًا بدون كرت:</p>
+      <div class="code"><pre>"model": "small",
+"device": "cpu",</pre></div>
+    </div></li>
+    <li><div>
+      <h3><span class="en">Check, then start</span><span class="ar" lang="ar">افحص، وبعدين شغّل</span></h3>
+      <p class="en">The doctor checks your microphone, packages, model and paste path, and tells you exactly what's wrong if something is. Then start rawi:</p>
+      <p class="ar" lang="ar">الفحص يتأكد من المايك والحزم والنموذج والنسخ واللصق، وإذا فيه شي غلط يقولك وش هو بالضبط. بعدها شغّل راوي:</p>
+      <div class="code"><pre>python rawi.py --doctor
+python rawi.py</pre></div>
+      <p class="en">The first start downloads the speech model once (about 0.5 GB for small). After that it needs no internet at all. Hold left <kbd>Ctrl</kbd> in any app and talk.</p>
+      <p class="ar" lang="ar">أول تشغيل ينزّل نموذج الكلام مرة وحدة (حوالي نص جيجا للصغير). بعدها ما يحتاج إنترنت أبدًا. اضغط <kbd>Ctrl</kbd> اليسار في أي برنامج وتكلّم.</p>
+    </div></li>
+    <li><div>
+      <h3><span class="en">Next time</span><span class="ar" lang="ar">المرات الجاية</span></h3>
+      <p class="en">Open a terminal in the rawi folder and run:</p>
+      <p class="ar" lang="ar">افتح الـ Terminal في مجلد راوي وشغّل:</p>
+      <div class="code"><pre>.venv\Scripts\python rawi.py</pre></div>
+    </div></li>
+  </ol>
+</section>
+
+<section id="limits">
+  <h2><span class="en">Honest limits</span><span class="ar" lang="ar">بصراحة</span></h2>
+  <p class="sub"><span class="en">It's a first cut, built for daily use in two languages. Here's where it stands.</span><span class="ar" lang="ar">هذي أول نسخة، مسوّاة للاستخدام اليومي بلغتين. هذا وضعها الحين.</span></p>
+  <div class="limits">
+    <div class="limit">
+      <h3><span class="en">Slow without a GPU</span><span class="ar" lang="ar">بطيء بدون كرت شاشة</span></h3>
+      <p class="en">On a laptop CPU, expect 8 to 11 seconds per line, and about 23 seconds for the first one while the model warms up. Nothing gets lost while you wait: lines queue up and come out in order.</p>
+      <p class="ar" lang="ar">على معالج لابتوب، توقّع من 8 إلى 11 ثانية للجملة، وحوالي 23 ثانية لأول جملة لين يسخن النموذج. وما يضيع شي وأنت تنتظر: الجمل تصف بالدور وتنكتب بالترتيب.</p>
+    </div>
+    <div class="limit">
+      <h3><span class="en">Arabic needs the big model</span><span class="ar" lang="ar">العربي يبي النموذج الكبير</span></h3>
+      <p class="en">On the small model, English comes out well and Arabic is weak. Arabic gets much better on the large model, which really wants an NVIDIA GPU.</p>
+      <p class="ar" lang="ar">على النموذج الصغير، الإنجليزي ممتاز والعربي ضعيف. العربي يتحسن كثير على النموذج الكبير، وهذا يبي كرت NVIDIA.</p>
+    </div>
+    <div class="limit">
+      <h3><span class="en">Windows only, for now</span><span class="ar" lang="ar">ويندوز بس، حاليًا</span></h3>
+      <p class="en">There's code for Mac and Linux, but nobody has run it there day to day yet. If you try it on a Mac, tell me how it goes.</p>
+      <p class="ar" lang="ar">فيه كود للماك ولينكس، بس محد جرّبه عليهم يوميًا للحين. إذا جربته على ماك، قولي وش صار.</p>
+    </div>
+    <div class="limit">
+      <h3><span class="en">Not packaged, not benchmarked</span><span class="ar" lang="ar">بدون مثبّت، وبدون قياس دقيق</span></h3>
+      <p class="en">It needs Python and a terminal until there's a one-click installer. And it hasn't been measured against a reference on Saudi dialect yet. That's next.</p>
+      <p class="ar" lang="ar">يحتاج بايثون وشاشة أوامر لين يصير له مثبّت بضغطة وحدة. وما انقاس للحين على اللهجة السعودية مقابل نص مرجعي. هذا الجاي.</p>
+    </div>
+  </div>
+  <div class="privacy">
+    <h3><span class="en">Privacy, plainly</span><span class="ar" lang="ar">الخصوصية، بوضوح</span></h3>
+    <p class="en">Audio stays in memory and is thrown away after it's written. Nothing is uploaded, there's no telemetry, and no update pings. This page has no analytics either, and loads nothing from anyone else.</p>
+    <p class="ar" lang="ar">الصوت يبقى في الذاكرة وينحذف بعد ما ينكتب. ما يترفع شي، وما فيه تتبّع ولا تحديثات تتصل بأحد. وحتى هذي الصفحة ما فيها أي تتبّع، وما تحمّل شي من أي جهة ثانية.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="row">
+    <span><span class="en">Made by Yousef Awlaki, with Claude. MIT licensed. Built on faster-whisper and OpenAI's Whisper.</span><span class="ar" lang="ar">سوّاه يوسف العولقي مع Claude. رخصة MIT. مبني على faster-whisper ونموذج Whisper من OpenAI.</span></span>
+    <a href="https://github.com/Yousifus/rawi"><span class="en">Source on GitHub</span><span class="ar" lang="ar">الكود على GitHub</span></a>
+  </div>
+</footer>
+</div>
+
+<script>
+// language: ?lang=ar or ?lang=en wins, then the saved choice, then the browser's language
+(() => {
+  const root = document.documentElement;
+  const set = (l, save) => {
+    root.classList.toggle('is-ar', l === 'ar');
+    root.lang = l; root.dir = l === 'ar' ? 'rtl' : 'ltr';
+    if (save) { try { localStorage.setItem('rawi-lang', l); } catch (e) {} }
+  };
+  let l = new URLSearchParams(location.search).get('lang');
+  if (l !== 'ar' && l !== 'en') {
+    try { l = localStorage.getItem('rawi-lang'); } catch (e) { l = null; }
+  }
+  if (l !== 'ar' && l !== 'en') l = (navigator.language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en';
+  set(l, false);
+  document.getElementById('lang').addEventListener('click', () => set(root.classList.contains('is-ar') ? 'en' : 'ar', true));
+})();
+
+// copy buttons on the code blocks
+document.querySelectorAll('.code').forEach(box => {
+  const b = document.createElement('button');
+  const say = (en, ar) => { b.innerHTML = `<span class="en">${en}</span><span class="ar" lang="ar">${ar}</span>`; };
+  b.className = 'copy'; b.type = 'button'; say('Copy', 'نسخ');
+  b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(box.querySelector('pre').innerText); say('Copied', 'تم النسخ'); }
+    catch (e) { say('Select it', 'حدّده'); }
+    setTimeout(() => say('Copy', 'نسخ'), 1400);
+  });
+  box.appendChild(b);
+});
+
+// the demo: hold Ctrl, speak, let go, wait (honest per mode), paste the whole line at once
+(() => {
+  const lines = [
+    // mixed lines end without a full stop, so the bidi algorithm can't strand it on the wrong side
+    'Send me the file before 9, وبعدها نتكلم عن الميزانية',
+    'تمام، بكرة الساعة ثمانية عند البيت.',
+    'Running ten minutes late, start without me.',
+    'الاجتماع خلص؟ send me the notes when you can'
+  ];
+  const label = {
+    en: { listening: 'listening', writing: 'writing', done: 'pasted' },
+    ar: { listening: 'أسمعك', writing: 'أكتب', done: 'انكتب' }
+  };
+  const doc = document.getElementById('doc'), cur = document.getElementById('cursorline');
+  const key = document.getElementById('key'), pill = document.getElementById('pill');
+  const ptext = document.getElementById('pilltext'), timer = document.getElementById('timer');
+  const modes = document.querySelectorAll('.mode');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let mode = 'gpu', i = 0, run = 0, visible = false, playing = false;
+  const lang = () => document.documentElement.classList.contains('is-ar') ? 'ar' : 'en';
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const state = s => {
+    pill.className = 'pill' + (s ? ' on ' + s : '');
+    ptext.textContent = s ? label[lang()][s] : '';
+    if (s !== 'writing') timer.textContent = '';
+  };
+  const reset = () => { doc.querySelectorAll('p.line').forEach(p => p.remove()); i = 0; };
+  const paste = text => {
+    const p = document.createElement('p');
+    p.className = 'line new'; p.textContent = text;
+    doc.insertBefore(p, cur);
+    const all = doc.querySelectorAll('p.line');
+    if (all.length > 4) all[0].remove();
+  };
+  async function once(id) {
+    const text = lines[i++ % lines.length];
+    key.classList.add('down'); state('listening');
+    await sleep(1400 + text.length * 35); if (id !== run) return;
+    key.classList.remove('down'); state('writing');
+    const wait = mode === 'gpu' ? 700 : 8000 + Math.random() * 3000;
+    const t0 = performance.now();
+    while (performance.now() - t0 < wait) {
+      timer.textContent = ((performance.now() - t0) / 1000).toFixed(1) + ' s';
+      await sleep(100); if (id !== run) return;
+    }
+    paste(text); state('done');
+    await sleep(1800); if (id !== run) return;
+    state(null);
+    await sleep(900);
+  }
+  async function loop() {
+    if (playing) return;
+    playing = true;
+    const id = ++run;
+    while (id === run && visible && !reduce) { await once(id); }
+    if (reduce && id === run) await once(id);
+    if (id === run) playing = false;
+  }
+  const restart = () => { run++; playing = false; key.classList.remove('down'); state(null); reset(); loop(); };
+  modes.forEach(b => b.addEventListener('click', () => {
+    mode = b.dataset.mode;
+    modes.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    restart();
+  }));
+  document.getElementById('replay').addEventListener('click', restart);
+  new IntersectionObserver(es => {
+    visible = es[0].isIntersecting;
+    if (visible) loop(); else { run++; playing = false; key.classList.remove('down'); state(null); }
+  }, { threshold: 0.3 }).observe(document.getElementById('demo'));
+})();
+</script>
+</body>
+</html>

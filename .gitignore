@@ -25,6 +25,11 @@
 !/.github/
 !/start.bat
 !/rawi-app.bat
+!/site/
+
+# the landing page's Vercel link and env pulls stay local
+.vercel/
+.env*
 
 # still never, even if named above
 __pycache__/
