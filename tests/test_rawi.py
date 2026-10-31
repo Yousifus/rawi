@@ -318,3 +318,47 @@ class TestConfiguredLanguages(unittest.TestCase):
         faint = make([("en", 0.51), ("ar", 0.06)], cfg={"languages": "ar"})
         faint.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
         self.assertEqual(faint.model.told, [None])
+
+class _FailingProbe(_FakeProbe):
+    """A probe that raises, with a vector left over from the previous line."""
+
+    def __init__(self, allp, texts=("hello",)):
+        super().__init__(allp, texts)
+        self.calls = 0
+
+    def detect_language(self, audio, language_detection_segments=1):
+        self.calls += 1
+        raise RuntimeError("probe died")
+
+
+class TestAProbeFailure(unittest.TestCase):
+    """A failed probe must fall back to the hint, never decide from the last line's vector."""
+
+    def _rawi(self, hint="ar", cfg=None, stale=None):
+        with mock.patch.dict(sys.modules, {"sounddevice": types.ModuleType("sounddevice")}):
+            d = rawi.Rawi(dict(rawi.DEFAULTS, **(cfg or {})))
+        d.model, d.lang_hint = _FailingProbe([("en", 0.90), ("ar", 0.05)]), hint
+        if stale is not None:
+            d.lang_probs = dict(stale)          # exactly the state a romanised line leaves behind
+        return d
+
+    def test_a_dead_probe_falls_back_to_the_hint(self):
+        d = self._rawi(stale={"en": 0.90, "ar": 0.05, "nn": 0.05})
+        d.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
+        self.assertEqual(d.model.told, ["ar"])      # the stale vector said "en 0.90" and would have won
+        self.assertEqual(d.lang_hint, "ar")
+
+    def test_a_dead_probe_with_no_hint_lets_whisper_decide(self):
+        d = self._rawi(hint=None, stale={"en": 0.90, "ar": 0.05})
+        d.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
+        self.assertEqual(d.model.told, [None])
+
+
+class TestTheHintFollowsTheConfiguredPair(unittest.TestCase):
+    def test_a_declared_third_language_becomes_the_hint(self):
+        with mock.patch.dict(sys.modules, {"sounddevice": types.ModuleType("sounddevice")}):
+            d = rawi.Rawi(dict(rawi.DEFAULTS, languages=["fr", "en"]))
+        d.model, d.lang_hint = _FakeProbe([("fr", 0.90), ("en", 0.05)]), None
+        d.transcribe(rawi.np.zeros(16000, dtype=rawi.np.float32), None)
+        self.assertEqual(d.model.told, ["fr"])
+        self.assertEqual(d.lang_hint, "fr")

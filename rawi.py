@@ -607,6 +607,7 @@ class Rawi:
     def pick_lang(self, audio):
         """Ask the encoder what it hears before deciding how to write it. A short line
         from a bilingual speaker is exactly where a blind auto-detect gets it wrong."""
+        self.lang_probs = {}       # a failed probe must not decide this line from the last one's
         try:
             lang, prob, allp = self.model.detect_language(audio, language_detection_segments=2)
             self.lang_probs = dict(allp or [])
@@ -696,7 +697,7 @@ class Rawi:
                     print(f"[rawi] second look: stayed english (markers={roman[:2]}, "
                           f"runner={ar_runner:.2f}, en_stop={en_stop})", flush=True)
         text = apply_dictionary(text, self.cfg)
-        if wrote in ("ar", "en") and (prob >= 0.60 or lang is not None):
+        if wrote in _languages(self.cfg) and (prob >= 0.60 or lang is not None):
             self.lang_hint = wrote
         self.last_lang = (lang, round(prob, 2))
         heard = " ".join(f"{x} {float(self.lang_probs.get(x) or 0):.2f}" for x in _languages(self.cfg))
