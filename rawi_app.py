@@ -577,8 +577,11 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
         except Exception:
             return {"ok": False, "message": "Could not read config.json."}
         for k in ("hold_key", "language", "model"):
-            if str(patch.get(k) or "").strip():   # an empty value would silently kill dictation
-                c[k] = patch[k]
+            # an empty value would silently kill dictation; strip before storing so a
+            # value that passed this check is the value that is written
+            value = str(patch.get(k) or "").strip()
+            if value:
+                c[k] = value
         if "log" in patch:
             c["log"] = bool(patch["log"])
         cl = c.setdefault("clean", {})
@@ -598,8 +601,11 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             c["snippets"] = {str(k): str(v) for k, v in patch["snippets"].items() if str(k).strip()}
         if "names" in patch or "pairs" in patch:
             d = c.setdefault("dictionary", {})
-            d["names"] = [str(x) for x in (patch.get("names") or [])]
-            d["pairs"] = [str(x) for x in (patch.get("pairs") or [])]
+            # saving one half of the dictionary is not a reason to erase the other
+            if "names" in patch:
+                d["names"] = [str(x) for x in (patch.get("names") or [])]
+            if "pairs" in patch:
+                d["pairs"] = [str(x) for x in (patch.get("pairs") or [])]
         json.dump(c, open(CFG, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
         n = self.restart_daemon()
         return {"ok": True, "message": ("Saved. rawi restarted and is loading the model." if n
