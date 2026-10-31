@@ -113,6 +113,20 @@ opens the hub, and quits everything. On a Mac keyboard the F keys may need `fn`.
 
 All of them are config keys, so you can remap any of them.
 
+## Voice
+
+`F7` speaks a transcript instead of pasting it. The server stays off until you start it. The default
+engine is Kokoro (English only). It is not installed unless you uncomment `kokoro` in
+`requirements.txt`.
+
+Arabic needs Piper: set `"engine": "piper"` in `voice.json`. `piper-tts` is **GPL-3.0-or-later**.
+It is optional and never installed by default, so a packager can ship rawi's MIT source without it
+and should not bundle the package in. The only Arabic voice Piper publishes is `ar_JO-kareem`
+(this build uses `ar_JO-kareem-medium`). Its dataset has no stated licence, and the voice was
+fine-tuned from `en_US-lessac-medium`. The English default is `en_US-libritts_r-medium`,
+**CC BY 4.0**. The old default, `en_US-ryan-high`, is CC BY-NC-SA 4.0 (non-commercial) and is not
+selected on its own.
+
 ## Configuration
 
 `config.json` sits next to `rawi.py` and is created on first run (or copy `config.example.json`).

@@ -23,4 +23,5 @@ soundfile>=0.12
 # voice mode (optional): local TTS server
 # kokoro==0.9.4
 # ...or for Arabic + English (voice.json "engine": "piper"):
+# GPL-3.0-or-later. Optional, never installed by default, and not vendored.
 # piper-tts==1.8.0
