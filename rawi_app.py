@@ -23,6 +23,9 @@ NO_WINDOW = 0x08000000 if IS_WIN else 0                     # CREATE_NO_WINDOW
 # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP on Windows; a new session elsewhere
 DETACH = ({"creationflags": 0x00000008 | 0x00000200} if IS_WIN else {"start_new_session": True})
 CLEANER = "http://127.0.0.1:18080/health"
+# The caps rawi.py ships, mirrored here because this file does not import the daemon (it would pull
+# sounddevice into the hub). tests/test_hub_config.py compares the two, so they cannot drift apart.
+CAP_DEFAULTS = {"hold": 300.0, "toggle": 0.0, "latch": 0.0}
 
 
 import rawi_mood  # optional: one emoji per dictation, earned by words
@@ -561,6 +564,7 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
                 "log": bool(c.get("log", False)),
                 "talk": bool(c.get("talk", False)),
                 "mood": c.get("mood", "auto"),
+                "max_seconds": c.get("max_seconds", {"hold": 0, "toggle": 180, "latch": 180}),
                 "clean": bool(cl.get("enabled", False)),
                 "level": cl.get("level", "light"),
                 "tone": cl.get("tone", "default"),
@@ -597,6 +601,39 @@ cant can't wont won't whats what's theres there's lets let's gonna wanna sorta k
             c["talk"] = bool(patch.get("talk"))
         if patch.get("mood") in ("auto", "off"):
             c["mood"] = patch["mood"]
+        if "max_seconds" in patch:                      # the hub's number boxes, 0 = off
+            given = patch.get("max_seconds")
+            current = c.get("max_seconds")
+            cur_caps = current if isinstance(current, dict) else {}
+
+            def _cap(value, fallback):
+                """A cap is a finite number from 0 up. Anything else keeps what was already there:
+                `true` is not one second, 1e999 is not a cap, and a bad value must not unlock."""
+                if isinstance(value, bool) or value is None:
+                    return fallback
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    return fallback
+                if number != number or number in (float("inf"), float("-inf")):
+                    return fallback
+                # a negative is not "off" and it is not a cap: it is a bad value, and the stored one
+                # stands. Clamping it to 0 would silently unlock a capped mode.
+                return fallback if number < 0 else number
+
+            def _existing(key):
+                # an absent cap keeps the value rawi itself would use: a partial save from anywhere
+                # but this page must not turn the hold ceiling off or invent a 180 s toggle cap,
+                # and a plain number is the old format rawi ignores, so it lifts to nothing
+                if key in cur_caps:
+                    return _cap(cur_caps.get(key), CAP_DEFAULTS[key])
+                return CAP_DEFAULTS[key]
+
+            if isinstance(given, dict):
+                c["max_seconds"] = {k: _cap(given[k], _existing(k)) if k in given else _existing(k)
+                                    for k in ("hold", "toggle", "latch")}
+            # anything else is left alone: a bare number is the old format and rawi ignores it, so
+            # writing one here would flatten three caps into a value that does nothing
         if isinstance(patch.get("snippets"), dict):
             c["snippets"] = {str(k): str(v) for k, v in patch["snippets"].items() if str(k).strip()}
         if "names" in patch or "pairs" in patch:
