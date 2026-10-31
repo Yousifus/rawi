@@ -82,11 +82,15 @@ def pid_alive(pid: int) -> bool:
     if not IS_WIN:
         try:
             os.kill(int(pid), 0)
-            return True
         except PermissionError:
             return True                      # alive, owned by someone else
         except Exception:
             return False
+        # a zombie (exited, not yet reaped: the hub never waits on the daemon it starts)
+        # still answers kill(pid, 0), and would block the next daemon from starting
+        st = subprocess.run(["ps", "-o", "stat=", "-p", str(int(pid))],
+                            capture_output=True, text=True).stdout.strip()
+        return bool(st) and not st.startswith("Z")
     try:
         import ctypes
         k = ctypes.windll.kernel32
@@ -953,7 +957,7 @@ class Rawi:
         import pyautogui
         self.injecting = True
         try:
-            pyautogui.hotkey(PASTE_MOD, "z")
+            chord("z")
             time.sleep(0.20)
         finally:
             self.injecting = False
@@ -974,7 +978,7 @@ class Rawi:
         time.sleep(0.10)
         self.injecting = True
         try:
-            pyautogui.hotkey(PASTE_MOD, "v")
+            chord("v")
         finally:
             time.sleep(0.12)
             self.injecting = False
@@ -984,6 +988,32 @@ class Rawi:
                 pyperclip.copy(old)
             except Exception:
                 pass
+
+
+MAC_KEYCODES = {"v": 9, "z": 6}      # kVK_ANSI_V, kVK_ANSI_Z: physical keys, so any layout works
+
+
+def chord(key: str) -> None:
+    """Cmd/Ctrl + key, the paste and undo chords.
+
+    On macOS the modifier rides on the key's own event. pyautogui.hotkey posts Cmd and V as two
+    events, and an app can read the V before it has seen the Cmd: the line then arrives as a lone
+    "v" (seen on an M1 Pro with the Arabic layout enabled: 3 stray v's in 35 pastes, 0 this way)."""
+    if not IS_MAC:
+        import pyautogui
+        pyautogui.hotkey(PASTE_MOD, key)
+        return
+    import Quartz
+    # the whole real keypress: Cmd down, key down/up with Cmd held, Cmd up. Some apps (Electron:
+    # Claude, Slack) want the Cmd key event too, and the left-Cmd device bit a keyboard sends.
+    cmd = Quartz.kCGEventFlagMaskCommand | 0x08          # 0x08 = NX_DEVICELCMDKEYMASK
+    src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+    for code, down, flags in ((55, True, cmd), (MAC_KEYCODES[key], True, cmd),
+                              (MAC_KEYCODES[key], False, cmd), (55, False, 0)):
+        ev = Quartz.CGEventCreateKeyboardEvent(src, code, down)       # 55 = kVK_Command
+        Quartz.CGEventSetFlags(ev, flags)
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
+        time.sleep(0.02)
 
 
 def key_to_name(k) -> str:

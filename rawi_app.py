@@ -65,11 +65,14 @@ def pid_alive(pid: int) -> bool:
     if not IS_WIN:
         try:
             os.kill(int(pid), 0)
-            return True
         except PermissionError:
             return True
         except Exception:
             return False
+        # a daemon this hub started and that has exited stays a zombie until reaped
+        st = subprocess.run(["ps", "-o", "stat=", "-p", str(int(pid))],
+                            capture_output=True, text=True).stdout.strip()
+        return bool(st) and not st.startswith("Z")
     try:
         import ctypes
         k = ctypes.windll.kernel32
